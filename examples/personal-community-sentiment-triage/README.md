@@ -140,6 +140,30 @@ example assumes that default path and targets the `openshell` gateway at
 instead, set `OPENSHELL_GATEWAY=snap-docker` and
 `OPENSHELL_GATEWAY_ENDPOINT=http://127.0.0.1:17670` in `.env`.
 
+On Debian/Ubuntu the installer registers `openshell-gateway` as a **systemd
+user service**, which only auto-starts when your user has an active systemd
+session. Headless hosts (cloud shells, SSH-only VMs, CI runners) often don't,
+so the service silently never starts and the first `openshell gateway add`
+call fails with `mTLS certificates for gateway 'openshell' were not found`.
+The fix, per the [OpenShell install docs](https://github.com/NVIDIA/OpenShell/blob/main/docs/about/installation.mdx#linux),
+is to enable linger so the user manager boots without an interactive login:
+
+```console
+$ sudo loginctl enable-linger $USER
+$ export XDG_RUNTIME_DIR=/run/user/$(id -u)   # only needed in shells started before linger
+$ systemctl --user start openshell-gateway    # if not already started
+$ systemctl --user status openshell-gateway   # verify
+```
+
+If `systemctl --user` returns `Failed to connect to bus: No medium found`
+even after `enable-linger`, it's because the current shell predates the
+user manager and doesn't know where the bus is. Either export
+`XDG_RUNTIME_DIR` as shown above, or log out and reconnect — `pam_systemd`
+sets it automatically once linger is on.
+
+The service's `ExecStartPre` provisions the mTLS bundle the CLI needs, so
+once the unit is `active (running)`, `bring-up.sh` can register the gateway.
+
 You also need a running Docker daemon. If you haven't already, register an Azure
 application and a dedicated agent mailbox per [docs/set-up-outlook-bridge.md](docs/set-up-outlook-bridge.md)
 — that's a one-time setup that produces your `OUTLOOK_CLIENT_ID` and `OUTLOOK_TENANT_ID`.

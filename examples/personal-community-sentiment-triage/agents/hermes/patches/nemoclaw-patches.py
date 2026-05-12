@@ -1,10 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# NemoClaw site customization — NeMo-Flow patched Hermes base image.
+# NemoClaw runtime patches for the Hermes sandbox.
 #
-# Loaded by Python at startup via the sitecustomize convention (site module).
-# Installed into the NeMo-Flow base image at build time.
+# Bundled into the image as
+# /usr/local/lib/nemoclaw-slack-shims/discord-preload/nemoclaw_patches.py and
+# chain-loaded by the neighboring sitecustomize.py (which Python imports
+# preferentially because discord-preload/ is first on PYTHONPATH). Also
+# installed at ${PY_SITE_DIR}/sitecustomize.py when ENABLE_NEMO_FLOW=1 as a
+# fallback for runs without PYTHONPATH.
+#
+# The NeMo-Flow meta_path hook below is a no-op when nemo-flow isn't
+# installed, so this file is safe to load regardless of build mode.
 #
 # Patch 1 — httpx transport fix: Hermes creates httpx.Client(transport=HTTPTransport(...))
 # for TCP keepalives. A custom transport bypasses HTTPS_PROXY env-var routing,
