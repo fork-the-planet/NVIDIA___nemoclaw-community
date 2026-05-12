@@ -187,7 +187,7 @@ $ eval "$(bash extras/ms-graph-token-manager/scripts/authenticate.sh \
     --client-id "$OUTLOOK_CLIENT_ID" \
     --tenant-id "$OUTLOOK_TENANT_ID" \
     --login-hint "$OUTLOOK_TARGET_MAILBOX" \
-    --flow browser)"
+    --flow device)"
 $ echo "$SESSION_ID"   # the UUID to paste into .env
 ```
 
