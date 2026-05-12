@@ -8,7 +8,7 @@
 
 # ARGs that appear in FROM instructions must be declared before the first FROM
 # so Docker treats them as global build args (multi-stage scoping rule).
-ARG BASE_IMAGE=ghcr.io/nvidia/nemoclaw/hermes-sandbox-base:latest
+ARG BASE_IMAGE=ghcr.io/nvidia/nemoclaw/hermes-sandbox-base@sha256:176ec6ec056cdf2dd45f60a0095fb6aac962eb5d7382d28d5734098a72399000
 
 # ── Stage 0: build the MS Graph API sidecar binary ────────────────────────────
 # PyInstaller produces a self-contained executable at a unique path
@@ -22,7 +22,8 @@ ARG BASE_IMAGE=ghcr.io/nvidia/nemoclaw/hermes-sandbox-base:latest
 # Ubuntu 22.04 runtime (glibc 2.35) with "GLIBC_2.38 not found".
 FROM ${BASE_IMAGE} AS sidecar-builder
 RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends binutils python3-pip libpython3.11 \
+    && export PY_MINOR="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" \
+    && apt-get install -y --no-install-recommends "libpython${PY_MINOR}" binutils python3-pip \
     && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --no-cache-dir --break-system-packages aiohttp pyinstaller
 COPY agents/hermes/sidecars/ms_graph_sidecar/ms_graph_sidecar.py /build/
@@ -47,8 +48,9 @@ ENV PHOENIX_COLLECTOR_ENDPOINT=${PHOENIX_COLLECTOR_ENDPOINT}
 # Baked at image build time using the same pattern as PHOENIX_COLLECTOR_ENDPOINT —
 # start.sh reads it as a real env var so the sidecar can open a TCP connection
 # without going through the OpenShell provider placeholder mechanism.
-# Default works on Docker Desktop (Mac/Windows) and Linux with --add-host.
-ARG TOKEN_MANAGER_HOST=host.docker.internal
+# Default works with the package-managed and snap-managed OpenShell gateway
+# services, which expose host-routed services at host.openshell.internal.
+ARG TOKEN_MANAGER_HOST=host.openshell.internal
 ENV TOKEN_MANAGER_HOST=${TOKEN_MANAGER_HOST}
 
 # Install the MS Graph sidecar binary from the builder stage.
@@ -87,6 +89,8 @@ RUN mkdir -p /etc/apt/keyrings \
     && apt-get install -y --no-install-recommends gh postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip3 install --no-cache-dir --break-system-packages "httpx>=0.27" "markdown-it-py>=3"
+
 # ── Optional: NeMo-Flow patched Hermes + Phoenix observability ──────────
 # When ENABLE_NEMO_FLOW=1, replace the unpatched Hermes from the base image
 # with a NeMo-Flow-patched build. nemo-flow itself comes from PyPI (no Rust
@@ -100,13 +104,14 @@ RUN mkdir -p /etc/apt/keyrings \
 # same release we install via pip; HERMES_NEMO_FLOW_COMMIT must match the
 # Hermes commit that NeMo-Flow's patch was generated against (see
 # https://github.com/NVIDIA/NeMo-Flow/blob/v0.1.0/third_party/sources.lock).
-# sitecustomize-nemo-flow.py is example-owned (not in NeMo-Flow upstream)
-# so it stays vendored.
+# nemoclaw-patches.py is example-owned (not in NeMo-Flow upstream) so it
+# stays vendored. It's the chain-loaded patch bundle for hermes (httpx
+# transport fix, Slack catch-all, NeMo-Flow session finalization).
 ARG ENABLE_NEMO_FLOW=0
 ARG NEMO_FLOW_VERSION=0.1.0
 ARG HERMES_NEMO_FLOW_COMMIT=2367c6ffd53b16daa0ffa1b338f3f9ee5587d4d5
 
-COPY agents/hermes/patches/sitecustomize-nemo-flow.py /tmp/sitecustomize-nemo-flow.py
+COPY agents/hermes/patches/nemoclaw-patches.py /tmp/nemoclaw-patches.py
 
 # hadolint ignore=DL3013
 RUN if [ "$ENABLE_NEMO_FLOW" = "1" ]; then \
@@ -126,16 +131,18 @@ RUN if [ "$ENABLE_NEMO_FLOW" = "1" ]; then \
              "httpx>=0.27" \
              "slack-bolt>=1.19" \
         && hermes --version \
-        && cp /tmp/sitecustomize-nemo-flow.py /usr/lib/python3.11/sitecustomize.py \
-        && chmod 644 /usr/lib/python3.11/sitecustomize.py \
+        && export PY_SITE_DIR="$(python3 -c 'import site; print(site.getsitepackages()[0])')" \
+        && cp /tmp/nemoclaw-patches.py "${PY_SITE_DIR}/sitecustomize.py" \
+        && chmod 644 "${PY_SITE_DIR}/sitecustomize.py" \
         && rm -rf /tmp/hermes-agent /tmp/nemo-flow.patch; \
     fi \
-    && rm -f /tmp/sitecustomize-nemo-flow.py
+    && rm -f /tmp/nemoclaw-patches.py
 
 # Hermes v2026.4.13+ auto-detects HTTPS_PROXY and skips fallback-IP
 # transport when a proxy is present. The sandbox proxy chain
 # (decode-proxy → OpenShell L7 proxy) handles credential placeholder
-# rewriting and hostname-based policy enforcement. No monkey patch needed.
+# rewriting and hostname-based policy enforcement. The Python preload
+# rewrites Slack SDK-shaped placeholders before HTTPS serialization.
 ENV HERMES_TELEGRAM_DISABLE_FALLBACK_IPS=1 \
     GH_TOKEN=openshell:resolve:env:GITHUB_TOKEN
 
@@ -146,12 +153,26 @@ COPY agents/hermes/plugin/ /opt/nemoclaw-hermes-plugin/
 # Install under /usr/local/lib/ so Landlock's read_only /usr rule permits access.
 COPY agents/hermes/bridges/ /usr/local/lib/nemoclaw-bridges/
 
-# Copy config generation script and URL-decode proxy
+# Copy config generation script and Slack helper shims.
+# Install under /usr/local/lib so Landlock's read_only /usr rule permits
+# the sandbox process to read both the decode proxy and preload files.
 COPY agents/hermes/generate-config.ts /opt/nemoclaw-generate-config.ts
-COPY agents/hermes/patch-hermes-gateway.py /opt/nemoclaw-patch-hermes-gateway.py
-COPY agents/hermes/decode-proxy.py /usr/local/bin/nemoclaw-decode-proxy
-RUN chmod 755 /usr/local/bin/nemoclaw-decode-proxy
-RUN python3 /opt/nemoclaw-patch-hermes-gateway.py
+RUN mkdir -p /usr/local/lib/nemoclaw-slack-shims
+COPY agents/hermes/decode-proxy.py /usr/local/lib/nemoclaw-slack-shims/decode-proxy.py
+COPY agents/hermes/discord-preload/ /usr/local/lib/nemoclaw-slack-shims/discord-preload/
+# Chain-load nemoclaw-patches.py beside the discord-preload sitecustomize so
+# Python imports a single sitecustomize but all patch sets run. Without this:
+# nemoclaw-patches.py is copied to ${PY_SITE_DIR}/sitecustomize.py when
+# ENABLE_NEMO_FLOW=1 (see line ~134), but PYTHONPATH puts discord-preload/
+# first on sys.path so Python imports discord-preload/sitecustomize.py and
+# never loads the patches bundle — silently shadowing the httpx transport
+# fix, Slack catch-all, and NeMo-Flow session finalization patches. The
+# nemo-flow meta_path hook in the bundle is a no-op when nemo-flow isn't
+# installed, so this COPY runs unconditionally.
+COPY agents/hermes/patches/nemoclaw-patches.py /usr/local/lib/nemoclaw-slack-shims/discord-preload/nemoclaw_patches.py
+RUN chmod 755 /usr/local/lib/nemoclaw-slack-shims/decode-proxy.py \
+    && find /usr/local/lib/nemoclaw-slack-shims/discord-preload -type d -exec chmod 755 {} + \
+    && find /usr/local/lib/nemoclaw-slack-shims/discord-preload -type f -exec chmod 444 {} +
 
 # NOTE: This example removes the upstream NemoClaw `COPY nemoclaw-blueprint/`
 # step. Nothing in the Hermes runtime (start.sh, plugin/, bridges/, sidecars/,
@@ -163,7 +184,6 @@ RUN python3 /opt/nemoclaw-patch-hermes-gateway.py
 # Source files may have restrictive permissions that Docker COPY preserves.
 RUN chmod -R a+rX /opt/nemoclaw-hermes-plugin/ \
     && chmod a+r /opt/nemoclaw-generate-config.ts \
-    && chmod a+r /opt/nemoclaw-patch-hermes-gateway.py \
     && chmod -R a+rX /usr/local/lib/nemoclaw-bridges/
 
 # Install shared sandbox-init.sh primitives (capability drop, atomic rc-file
@@ -196,7 +216,7 @@ ARG OUTLOOK_ALLOWED_SENDERS=
 ARG SOURCE_ETL_GITHUB_REPO=
 ARG SOURCE_ETL_FORUM_TAG=
 ARG SOURCE_ETL_API_URL=
-ARG SOURCE_ETL_API_HOST=
+ARG SOURCE_ETL_API_HOST=host.openshell.internal
 ARG SOURCE_ETL_API_PORT=3100
 ARG NEMOCLAW_BUILD_ID=default
 ARG MS_GRAPH_SERVICES="outlook"
