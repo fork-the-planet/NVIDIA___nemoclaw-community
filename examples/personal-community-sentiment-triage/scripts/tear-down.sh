@@ -27,7 +27,7 @@
 #   $ openshell provider delete compatible-endpoint
 # directly.
 #
-# Low-level runtime commands invoked by this script:
+# OpenShell commands you'll see:
 #   - openshell sandbox delete
 #   - openshell provider delete
 

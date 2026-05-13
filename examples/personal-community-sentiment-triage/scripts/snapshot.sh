@@ -21,7 +21,7 @@
 # manifest.json. Snapshot path is printed on stdout so callers can capture it:
 #   $ SNAP=$(bash scripts/snapshot.sh)
 #
-# Low-level runtime commands invoked by this script:
+# OpenShell commands you'll see:
 #   - openshell sandbox download <name> <sandbox-path> <local-dest>
 
 set -euo pipefail
@@ -47,7 +47,7 @@ echo "Downloading /sandbox/.hermes-data from $SANDBOX_NAME …" >&2
 openshell sandbox download "$SANDBOX_NAME" /sandbox/.hermes-data "$WORK/" >/dev/null
 
 # `download` may produce either $WORK/.hermes-data/... or $WORK/... depending on
-# the runtime version's basename handling. Handle both shapes.
+# the OpenShell version's basename handling. Handle both shapes.
 if [[ -d "$WORK/.hermes-data" ]]; then
   STATE_ROOT="$WORK/.hermes-data"
 else

@@ -4,7 +4,7 @@
 NemoClaw plugin for Hermes Agent.
 
 Provides sandbox status tools, skill hot-reload, and a startup banner when
-Hermes runs inside a NemoClaw-managed sandbox.
+Hermes runs inside an OpenShell sandbox managed by NemoClaw.
 
 Skill hot-reload: Hermes caches its skill slash-command registry in a
 module-global dict on first scan. New skills dropped on disk are invisible
