@@ -1,10 +1,10 @@
 # Contributing To NemoClaw Community
 
-Thank you for your interest in improving NemoClaw Community. This repository follows the same contribution model as OpenShell Community: focused pull requests, clear documentation, local verification, and Developer Certificate of Origin sign-offs.
+Thank you for your interest in improving NemoClaw Community.
 
 ## Ways To Contribute
 
-- Improve OpenShell example documentation.
+- Improve NemoClaw example documentation.
 - Fix setup, teardown, or sandbox lifecycle bugs.
 - Add or improve agent skills inside an example.
 - Improve source ETL, bridge, or policy configuration.

@@ -3,9 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue)](LICENSE)
 [![Security Policy](https://img.shields.io/badge/Security-Report%20a%20Vulnerability-red)](SECURITY.md)
 
-NemoClaw Community is a collection of OpenShell examples for building constrained, inspectable agent workflows around community signal. The current example packages a Hermes-based personal community sentiment triage agent that reads curated public/community sources, compares them with team priorities, and helps maintainers identify recurring gaps, questions, and follow-ups.
-
-This repository follows the public OpenShell Community repo conventions for licensing, contribution flow, security reporting, and release hygiene so it can move through NVIDIA open-source review with minimal rework.
+NemoClaw Community is a collection of NemoClaw examples for building constrained, inspectable agent workflows. 
 
 ## What's Here
 
