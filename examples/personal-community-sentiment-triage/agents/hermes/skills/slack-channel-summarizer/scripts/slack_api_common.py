@@ -12,9 +12,9 @@ from pathlib import Path
 def _candidate_env_files() -> list[Path]:
     hermes_home = Path(os.environ.get("HERMES_HOME", "/sandbox/.hermes-data"))
     return [
-        Path("/sandbox/.hermes/.env"),
         hermes_home / ".env",
         Path("/sandbox/.hermes-data/.env"),
+        Path("/sandbox/.hermes/.env"),
     ]
 
 
@@ -47,9 +47,12 @@ def load_env_defaults() -> None:
 def get_slack_bot_token() -> str:
     """Return the best available Slack bot token placeholder for egress."""
     load_env_defaults()
+    runtime_value = _read_env_value(Path("/sandbox/.hermes-data/.env"), "SLACK_BOT_TOKEN")
+    if runtime_value.startswith("openshell:resolve:env:"):
+        return runtime_value
 
-    baked_value = _read_env_value(Path("/sandbox/.hermes/.env"), "SLACK_BOT_TOKEN")
-    if baked_value.startswith("xoxb-OPENSHELL-RESOLVE-ENV-"):
-        return baked_value
+    env_value = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if env_value:
+        return env_value
 
-    return os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    return _read_env_value(Path("/sandbox/.hermes/.env"), "SLACK_BOT_TOKEN")
