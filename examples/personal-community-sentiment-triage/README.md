@@ -239,9 +239,11 @@ $ bash scripts/bring-up.sh
 
 The script auto-sources `.env`, then runs `01-gateway.sh` → `02-providers.sh` →
 `03-sandbox.sh` (select or register the local OpenShell gateway, upsert provider
-credentials, build and launch the sandbox). When `PHOENIX_COLLECTOR_ENDPOINT` is set, this is where the
-NeMo-Flow base variant gets selected and the endpoint baked into the image so
-OpenInference traces flow from Hermes into Phoenix at `http://localhost:6006`.
+credentials, build and launch the sandbox). The image always installs NeMo-Flow
+so the agent writes ATIF traces to `/tmp/atif/` regardless of Phoenix config.
+If `PHOENIX_COLLECTOR_ENDPOINT` is set, `03-sandbox.sh` additionally bakes the
+endpoint into the image so OpenInference traces stream into Phoenix at
+`http://localhost:6006`.
 
 ## What this example owns
 
@@ -253,6 +255,7 @@ OpenInference traces flow from Hermes into Phoenix at `http://localhost:6006`.
   - `bring-up.sh` — orchestrator for 01 → 02 → 03; does **not** invoke `00-host-services.sh` (host services are long-lived).
   - `tear-down.sh` — removes the sandbox and per-sandbox providers; preserves host services unless `STOP_HOST_SERVICES=1`.
   - `snapshot.sh` / `restore.sh` — explicit Hermes state preservation across tear-down/bring-up cycles.
+  - `download-traces.sh` — pull ATIF trace records from `/tmp/atif/` inside the sandbox into a host-side tarball. See [Capturing ATIF traces](#capturing-atif-traces) for the env knobs.
   - `host-tls-proxy.py` — optional plain-HTTP forwarder for hosts where the sandbox can't validate the inference endpoint's TLS chain (corporate VPN, split-horizon DNS, mkcert). See [docs/host-tls-proxy.md](docs/host-tls-proxy.md).
 - **Generates and discards**: a sed-patched `.Dockerfile.staged` at the example dir
   root. OpenShell does the actual build; we patch ARG defaults beforehand because
@@ -262,13 +265,53 @@ The example's Dockerfile drops the upstream `COPY nemoclaw-blueprint/` step —
 nothing in the Hermes runtime reads `/sandbox/.nemoclaw/blueprints/`, so this
 example is **fully self-contained** and never needs a NemoClaw checkout.
 
-When `PHOENIX_COLLECTOR_ENDPOINT` is set, `bring-up.sh` flips
-`ARG ENABLE_NEMO_FLOW=1` in the staged Dockerfile, which triggers an in-image
-`pip install` of the `nemo-flow` version pinned by `NEMO_FLOW_VERSION` in
+The Dockerfile always installs NeMo-Flow: an in-image `pip install` of the
+`nemo-flow` version pinned by `NEMO_FLOW_VERSION` in
 [agents/hermes/Dockerfile](agents/hermes/Dockerfile) (from PyPI), plus a
 re-install of Hermes with the NeMo-Flow integration patch fetched from
 [NVIDIA/NeMo-Flow](https://github.com/NVIDIA/NeMo-Flow) at the pinned
-`NEMO_FLOW_VERSION` tag and applied during the build.
+`NEMO_FLOW_VERSION` tag and applied during the build (~1-2 min on a cold
+build, cached on rebuild). That alone is enough for the agent to write ATIF
+trace records to `/tmp/atif/` — capture them with
+[`scripts/download-traces.sh`](scripts/download-traces.sh).
+
+Setting `PHOENIX_COLLECTOR_ENDPOINT` is a separate opt-in for live
+OpenInference egress: when present, `03-sandbox.sh` bakes the URL into the
+image so the agent streams traces to a Phoenix collector. The collector is
+included in [extras/docker-compose.yml](extras/docker-compose.yml) and runs
+on host port `6006`.
+
+### Capturing ATIF traces
+
+The agent writes ATIF (Agent Trajectory Format) records to `/tmp/atif/`
+inside the sandbox on every turn. That directory is ephemeral — it lives
+on the sandbox's writable layer and is destroyed by `tear-down.sh` — so
+capture before destroying the sandbox if you want to keep the traces.
+
+```console
+$ bash scripts/download-traces.sh
+```
+
+Writes `$EXAMPLE_DIR/.traces/atif-{ISO-timestamp}.tar.gz` plus a JSON
+manifest sidecar. The tarball path is printed on stdout (progress goes to
+stderr), so callers can capture it:
+
+```console
+$ TRACE=$(bash scripts/download-traces.sh)
+```
+
+Two env vars answer the "from where / to where" questions and can be
+overridden at the call site:
+
+| Env var | Default | What it controls |
+|---|---|---|
+| `SANDBOX_NAME` | `hermes-direct` | Which OpenShell sandbox to pull `/tmp/atif/` from. Shared with the rest of the example's scripts (defined in `_lib.sh`). |
+| `TRACES_DIR` | `$EXAMPLE_DIR/.traces` | Host-side directory the tarball is written to. |
+
+If `/tmp/atif/` is empty when the script runs (e.g. the agent hasn't had
+a turn yet), the script still emits a valid empty tarball whose manifest
+carries an explanatory `note` — downstream tooling never has to
+special-case "no file."
 
 ## Prerequisites
 
@@ -309,7 +352,7 @@ compatible-endpoint --model <NEMOCLAW_MODEL>` rather than `--provider` on sandbo
 | `NEMOCLAW_ENDPOINT_URL` | `https://integrate.api.nvidia.com/v1` | Upstream base URL for the `compatible-endpoint` provider. (`OPENAI_BASE_URL` is also accepted as a fallback.) |
 | `COMPATIBLE_API_KEY` | (none) | Inference API key. Mirrors NemoClaw's `REMOTE_PROVIDER_CONFIG.custom`. (`OPENAI_API_KEY` is also accepted.) |
 | `TOKEN_MANAGER_HOST` | `host.openshell.internal` | Host where the MS Graph token manager is reachable from inside the sandbox. |
-| `PHOENIX_COLLECTOR_ENDPOINT` | (none) | Set to e.g. `http://host.openshell.internal:6006/v1/traces` to enable OpenInference telemetry. When set, bring-up flips `ENABLE_NEMO_FLOW=1` so the Dockerfile installs the `nemo-flow` version pinned by `NEMO_FLOW_VERSION` in the Dockerfile from PyPI and applies the Hermes integration patch (~1-2 min on first build, cached on rebuild). |
+| `PHOENIX_COLLECTOR_ENDPOINT` | (none) | Set to e.g. `http://host.openshell.internal:6006/v1/traces` to stream OpenInference traces to a Phoenix collector. ATIF trace generation does not depend on this — NeMo-Flow is always installed and writes ATIF locally to `/tmp/atif/` regardless. |
 
 ## Verification (what success looks like)
 
