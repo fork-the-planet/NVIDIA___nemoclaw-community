@@ -1,4 +1,5 @@
 # NemoClaw Retail Demo
+This example was built by HPE AI & Data Technical consultants: Paula Serna and Sergio Donís; and is presented as-is. See credits for contact information.
 
 This NemoClaw demo provides an AI-powered retail management assistant that lets store employees interact with company data through natural conversation - no dashboards, no SQL, no training required. Users connect via Telegram and ask questions or trigger operations naturally: check inventory, request stock transfers, query sales trends.
 
@@ -85,7 +86,15 @@ Both deployment approaches share the same identity files that define the agent's
 | `identity/USER.md` | Runtime user context. Derives the user's name from their email, detects language, scopes operations to their store by default. |
 | `skills/retail-api/SKILL.md` | Retail API skill — lazy-loaded on demand. Contains the full command reference for the retail API CLI. |
 
+
+
 The `startup.sh` (both approaches) injects these files into the OpenShell sandbox at deploy time via `patch-openclaw.py`.
+
+> **⚠️ Demo workaround - identity verification**
+>
+> In this sandbox, user identity is resolved by mapping a Telegram ID to an employee record in the `TelegramAuth` table. The agent then trusts that mapping unconditionally for all RBAC decisions.
+>
+> In a real end-to-end deployment, identity should be verified by an external Identity Provider (IdP). This is a demo workaround. 
 
 ## LLM Inference Endpoint
 
