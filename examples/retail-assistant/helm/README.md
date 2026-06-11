@@ -27,7 +27,8 @@ Edit `values.yaml` or pass overrides with `--set`:
 
 | Value | Description |
 |---|---|
-| `workspace.endpoint` | vLLM inference endpoint as `host:port` |
+| `workspace.openaiBaseUrl` | OpenAI-compatible base URL incl. `/v1` (e.g. `http://ip:port/v1`) |
+| `workspace.socatInferencePort` | Port for the inference socat proxy. Default `8000`. Change if port 8000 is busy on the node. |
 | `workspace.model` | Model name (e.g. `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8`) |
 | `workspace.agent_name` | OpenShell sandbox name |
 | `telegram.botToken` | Telegram bot token from @BotFather |

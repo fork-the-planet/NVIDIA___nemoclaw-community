@@ -57,8 +57,9 @@ Edit `docker-compose/.env` before deploying:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DYNAMO_HOST` | **Yes** | — | vLLM endpoint as `host:port` (no scheme). Supports container names, IPs, and nip.io domains. |
-| `NEMOCLAW_MODEL` | **Yes** | — | Model name as served by vLLM (e.g. `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8`) |
+| `OPENAI_BASE_URL` | **Yes** | — | Full base URL of an OpenAI-compatible endpoint, including `/v1` (e.g. `http://localhost:8600/v1`). Supports container names, IPs, nip.io domains, and `https://` hosted endpoints. |
+| `OPENAI_API_KEY` | No | `none` | API key for `OPENAI_BASE_URL`. Leave `none` for local servers without auth. |
+| `NEMOCLAW_MODEL` | **Yes** | — | Model name as served by the endpoint (e.g. `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8`) |
 | `TELEGRAM_BOT_TOKEN` | **Yes** | — | Bot token from @BotFather |
 | `TELEGRAM_USER_ID` | **Yes** | — | Comma-separated numeric Telegram user IDs allowed to use the bot |
 | `NEMOCLAW_SANDBOX_NAME` | No | `retail-demo-assistant` | Name of the OpenShell sandbox |
@@ -79,11 +80,11 @@ Edit `docker-compose/.env` before deploying:
 | `CHAT_UI_URL` | No | — | External URL for the NemoClaw dashboard. Leave empty if not using ingress |
 | `NEMOCLAW_BIN_PATH` | No | `/tmp/nemoclaw-bin` | Host path for shared OpenShell binaries. Only set if running multiple stacks on the same host. |
 
-> **`DYNAMO_HOST` with a container name:** attach the vLLM container to the same Docker network and use its name directly:
+> **`OPENAI_BASE_URL` with a container name:** attach the vLLM container to the same Docker network and use its name directly:
 > ```bash
 > docker network connect nemoclaw-docker nemotron-super
 > ```
-> Then set `DYNAMO_HOST=nemotron-super:8000`. For a remote host use its IP or a nip.io domain.
+> Then set `OPENAI_BASE_URL=http://nemotron-super:8000/v1`. For a remote host use its IP, or a hosted `https://` endpoint.
 
 ## Adding a User
 
@@ -131,8 +132,8 @@ docker compose up -d
 The `workspace` container's `startup.sh` handles everything automatically:
 
 1. Installs packages: `docker.io`, `socat`, `curl`, Node.js 22
-2. Resolves DNS for container-name `DYNAMO_HOST` entries
-3. Starts socat proxies — vLLM on `:8000`, retail API on `:8001`
+2. Parses `OPENAI_BASE_URL` and resolves DNS for container-name hosts
+3. Starts socat proxies — inference on `:8000`, retail API on `:8001`
 4. Verifies host Docker socket is available
 5. Prunes stale Docker build cache
 6. Exports Telegram channel config as base64 build args
@@ -208,7 +209,7 @@ docker compose down -v   # -v removes database volume
 
 | Problem | Fix |
 |---|---|
-| `socat-8000 ERROR: socat failed again` | vLLM unreachable. Check `DYNAMO_HOST` and that the model container is running. |
+| `socat-8000 ERROR: socat failed again` | Endpoint unreachable. Check `OPENAI_BASE_URL` and that the model server is running. |
 | `Docker not available via host socket` | Check `/var/run/docker.sock` is accessible on the host. |
 | `[Fix9] Pre-starting gateway container...` | Normal — gateway binary workaround. |
 | `Sandbox not created after second attempt` | Check `docker logs nemoclaw-openshell-gateway`. Try `docker compose down -v` and retry. |

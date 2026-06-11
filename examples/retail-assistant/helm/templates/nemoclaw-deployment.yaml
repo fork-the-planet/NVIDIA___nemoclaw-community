@@ -51,9 +51,14 @@ spec:
           env:
             - name: DOCKER_HOST
               value: unix:///var/run/docker.sock
-            # Dynamo endpoint (raw host:port for socat) - UPDATE THIS FOR YOUR CLUSTER
-            - name: DYNAMO_HOST
-              value: "{{ .Values.workspace.endpoint }}"
+            # OpenAI-compatible inference endpoint (full base URL incl. /v1).
+            # startup.sh parses this into host:port for socat and derives
+            # NEMOCLAW_ENDPOINT_URL from its path. UPDATE THIS FOR YOUR CLUSTER.
+            - name: OPENAI_BASE_URL
+              value: "{{ .Values.workspace.openaiBaseUrl }}"
+            # Inference socat port (default 8000). Change if 8000 is busy.
+            - name: SOCAT_INFERENCE_PORT
+              value: "{{ .Values.workspace.socatInferencePort | default 8000 }}"
             # NemoClaw config (uses host.openshell.internal via socat)
             - name: NEMOCLAW_NON_INTERACTIVE
               value: "1"
@@ -63,8 +68,6 @@ spec:
               value: "{{ .Values.workspace.model }}"
             - name: COMPATIBLE_API_KEY
               value: "{{ .Values.workspace.token }}"
-            - name: NEMOCLAW_ENDPOINT_URL
-              value: "http://host.openshell.internal:8000/v1"
             - name: NEMOCLAW_SANDBOX_NAME
               value: "{{ .Values.workspace.agent_name }}"
             - name: NEMOCLAW_POLICY_MODE

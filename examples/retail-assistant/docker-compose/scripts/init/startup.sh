@@ -23,35 +23,86 @@ get_retail_api_ip() {
   echo "127.0.0.1"
 }
 
-# ─── Helper: ensure nip.io DNS resolves via /etc/hosts ────────
-# nip.io DNS can be unreliable. If DYNAMO_HOST uses nip.io,
-# extract the embedded IP and add a /etc/hosts entry so socat
-# (and curl) can always resolve it.
-ensure_dynamo_dns() {
-  local dynamo_host="${DYNAMO_HOST%%:*}"
+# ─── Helper: parse OPENAI_BASE_URL into scheme/host/port/path ──
+# Users provide a full OpenAI-compatible base URL, e.g.
+#   http://localhost:8600/v1            (local tunnel / vLLM / Dynamo)
+#   http://nemotron-super:8000/v1       (vLLM container on same network)
+#   https://integrate.api.nvidia.com/v1 (hosted endpoint)
+# The socat proxy still needs a raw host:port and the gateway
+# provider needs the path (e.g. /v1), so we split it into:
+#   OPENAI_SCHEME, OPENAI_HOST, OPENAI_PORT, OPENAI_PATH
+parse_openai_base_url() {
+  # Backward-compat: derive from legacy DYNAMO_HOST (host:port) if set.
+  if [ -z "${OPENAI_BASE_URL:-}" ] && [ -n "${DYNAMO_HOST:-}" ]; then
+    OPENAI_BASE_URL="http://${DYNAMO_HOST}/v1"
+    echo "[Config] OPENAI_BASE_URL not set; derived from legacy DYNAMO_HOST: $OPENAI_BASE_URL"
+  fi
+  if [ -z "${OPENAI_BASE_URL:-}" ]; then
+    echo "[Config] ERROR: OPENAI_BASE_URL is not set."
+    return 1
+  fi
+  local url="$OPENAI_BASE_URL"
+  OPENAI_SCHEME="http"
+  case "$url" in
+    https://*) OPENAI_SCHEME="https"; url="${url#https://}" ;;
+    http://*)  OPENAI_SCHEME="http";  url="${url#http://}" ;;
+  esac
+  local hostport="${url%%/*}"
+  if [ "$hostport" = "$url" ]; then
+    OPENAI_PATH=""
+  else
+    OPENAI_PATH="/${url#*/}"
+  fi
+  OPENAI_PATH="${OPENAI_PATH%/}"            # drop any trailing slash
+  OPENAI_HOST="${hostport%%:*}"
+  if [ "${hostport#*:}" = "$hostport" ]; then
+    [ "$OPENAI_SCHEME" = "https" ] && OPENAI_PORT=443 || OPENAI_PORT=80
+  else
+    OPENAI_PORT="${hostport##*:}"
+  fi
+  echo "[Config] OPENAI_BASE_URL=$OPENAI_BASE_URL -> host=$OPENAI_HOST port=$OPENAI_PORT path='${OPENAI_PATH}' scheme=$OPENAI_SCHEME"
+}
+
+# ─── Helper: socat target for the inference proxy ─────────────
+# Plain TCP for http upstreams; originate TLS for https upstreams
+# so the sandbox can keep talking plain http to the local socat port.
+openai_socat_target() {
+  if [ "$OPENAI_SCHEME" = "https" ]; then
+    echo "OPENSSL:${OPENAI_HOST}:${OPENAI_PORT},verify=0"
+  else
+    echo "TCP:${OPENAI_HOST}:${OPENAI_PORT}"
+  fi
+}
+
+# ─── Helper: ensure the inference host resolves via /etc/hosts ─
+# nip.io DNS can be unreliable and container names need resolving
+# when running with network_mode: host. Add an /etc/hosts entry so
+# socat (and curl) can always resolve OPENAI_HOST.
+ensure_openai_dns() {
+  local host="$OPENAI_HOST"
   # Already resolvable? Nothing to do.
-  if getent hosts "$dynamo_host" >/dev/null 2>&1; then
+  if getent hosts "$host" >/dev/null 2>&1; then
     return
   fi
   # nip.io: extract embedded IP
-  if echo "$dynamo_host" | grep -q "nip.io"; then
+  if echo "$host" | grep -q "nip.io"; then
     local ip
-    ip=$(echo "$dynamo_host" | grep -oP '\d+\.\d+\.\d+\.\d+')
+    ip=$(echo "$host" | grep -oP '\d+\.\d+\.\d+\.\d+')
     if [ -n "$ip" ]; then
-      echo "[DNS] Adding /etc/hosts (nip.io): $ip $dynamo_host"
-      echo "$ip $dynamo_host" >> /etc/hosts
+      echo "[DNS] Adding /etc/hosts (nip.io): $ip $host"
+      echo "$ip $host" >> /etc/hosts
       return
     fi
   fi
   # Docker container name: resolve via docker inspect (needed with network_mode: host)
   local container_ip
-  container_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$dynamo_host" 2>/dev/null | awk '{print $1}')
+  container_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$host" 2>/dev/null | awk '{print $1}')
   if [ -n "$container_ip" ]; then
-    echo "[DNS] Adding /etc/hosts (docker): $container_ip $dynamo_host"
-    echo "$container_ip $dynamo_host" >> /etc/hosts
+    echo "[DNS] Adding /etc/hosts (docker): $container_ip $host"
+    echo "$container_ip $host" >> /etc/hosts
     return
   fi
-  echo "[DNS] WARNING: Cannot resolve DYNAMO_HOST='$dynamo_host'"
+  echo "[DNS] WARNING: Cannot resolve OPENAI_HOST='$host'"
 }
 
 # ─── Helper: find the sandbox Docker container ───────────────
@@ -79,14 +130,22 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 echo "[1/4] Node.js $(node --version) installed"
 
-# ─── DNS fix: ensure nip.io domains resolve ──────────────────
+# ─── Inference endpoint: parse OPENAI_BASE_URL + ensure DNS ──
 # Must happen BEFORE socat starts, otherwise socat fails to connect.
-ensure_dynamo_dns
+parse_openai_base_url
+ensure_openai_dns
+# The sandbox/installer talk to the local socat proxy; preserve the
+# upstream path (e.g. /v1) from OPENAI_BASE_URL.
+# INFER_PORT is the workspace port the inference socat listens on. Make it
+# configurable so the example can coexist with a busy host port 8000
+# (workspace runs network_mode: host, so this port is shared with the host).
+INFER_PORT="${SOCAT_INFERENCE_PORT:-8000}"
+export NEMOCLAW_ENDPOINT_URL="http://host.openshell.internal:${INFER_PORT}${OPENAI_PATH}"
 
 # [2/4] Start socat proxies
 echo "[2/4] Starting socat proxies..."
-# Port 8000: vLLM / LLM endpoint (external, via ingress)
-socat TCP-LISTEN:8000,fork,reuseaddr TCP:"$DYNAMO_HOST" &
+# Inference port: OpenAI-compatible LLM endpoint (forwarded to OPENAI_BASE_URL)
+socat TCP-LISTEN:${INFER_PORT},fork,reuseaddr "$(openai_socat_target)" &
 SOCAT_8000_PID=$!
 # Port 8001: Retail API — forwarded into the sandbox as workspace_ip:8001
 # With network_mode: host, use localhost:8002 (retail_api publishes 8002→8000)
@@ -94,15 +153,17 @@ socat TCP-LISTEN:8001,fork,reuseaddr TCP:localhost:8002 &
 echo "127.0.0.1 host.openshell.internal" >> /etc/hosts
 sleep 1
 
-# Verify socat 8000 is alive (may have died if DNS still failed)
+# Verify the inference socat is alive (may have died if DNS still failed
+# or the port is already in use on the host).
 sleep 2
 if ! kill -0 "$SOCAT_8000_PID" 2>/dev/null; then
-  echo "[socat-8000] WARNING: socat died, restarting..."
-  socat TCP-LISTEN:8000,fork,reuseaddr TCP:"$DYNAMO_HOST" &
+  echo "[socat-${INFER_PORT}] WARNING: socat died, restarting..."
+  socat TCP-LISTEN:${INFER_PORT},fork,reuseaddr "$(openai_socat_target)" &
   SOCAT_8000_PID=$!
   sleep 1
   if ! kill -0 "$SOCAT_8000_PID" 2>/dev/null; then
-    echo "[socat-8000] ERROR: socat failed again. Inference will not work."
+    echo "[socat-${INFER_PORT}] ERROR: socat failed again. Inference will not work."
+    echo "[socat-${INFER_PORT}] Is host port ${INFER_PORT} already in use? Set SOCAT_INFERENCE_PORT to a free port in .env."
   fi
 fi
 
@@ -136,10 +197,13 @@ fi
 echo "[4/4] Running NemoClaw installer..."
 
 # Prepare shared volume for gateway/sandbox binaries (Fix #9).
-# The gateway bind-mounts openshell-sandbox into sandbox containers.
-# Docker resolves bind-mount sources from the HOST filesystem.
-# /tmp/nemoclaw-bin is a shared volume visible to both container and host.
-mkdir -p /tmp/nemoclaw-bin
+# The gateway bind-mounts openshell-sandbox into sandbox containers and the
+# nemoclaw CLI spawns these binaries locally. The compose file mounts the
+# shared volume at the SAME path on host and container ($NEMOCLAW_BIN_PATH),
+# so a single path works for both the HOST docker daemon (bind-mount sources)
+# and processes spawned INSIDE this container.
+BIN_PATH="${NEMOCLAW_BIN_PATH:-/tmp/nemoclaw-bin}"
+mkdir -p "$BIN_PATH"
 
 # Check if a sandbox already exists (from a previous run). If yes, skip onboard.
 if nemoclaw "${NEMOCLAW_SANDBOX_NAME:-retail-demo-assistant}" status >/dev/null 2>&1; then
@@ -158,14 +222,20 @@ else
 
   # ─── Fix #9: Copy binaries to host-visible shared volume ───
   if [ -f /usr/local/bin/openshell-gateway ] && [ -f /usr/local/bin/openshell-sandbox ]; then
-    echo "[Fix9] Copying OpenShell binaries to shared volume..."
-    # Remove first to avoid "Text file busy" if sandbox is using the binary
-    rm -f /tmp/nemoclaw-bin/openshell-gateway /tmp/nemoclaw-bin/openshell-sandbox 2>/dev/null || true
-    cp /usr/local/bin/openshell-gateway /tmp/nemoclaw-bin/openshell-gateway 2>/dev/null || true
-    cp /usr/local/bin/openshell-sandbox /tmp/nemoclaw-bin/openshell-sandbox 2>/dev/null || true
-    chmod +x /tmp/nemoclaw-bin/openshell-gateway /tmp/nemoclaw-bin/openshell-sandbox 2>/dev/null || true
-    export NEMOCLAW_OPENSHELL_GATEWAY_BIN=/tmp/nemoclaw-bin/openshell-gateway
-    export NEMOCLAW_OPENSHELL_SANDBOX_BIN=/tmp/nemoclaw-bin/openshell-sandbox
+    echo "[Fix9] Copying OpenShell binaries to shared volume ($BIN_PATH)..."
+    # Remove first to avoid "Text file busy" if the sandbox is using the
+    # binary. Use rm -rf because a previous failed `docker run` may have
+    # auto-created these paths as empty DIRECTORIES (rm -f can't remove dirs).
+    rm -rf "$BIN_PATH/openshell-gateway" "$BIN_PATH/openshell-sandbox" 2>/dev/null || true
+    cp /usr/local/bin/openshell-gateway "$BIN_PATH/openshell-gateway"
+    cp /usr/local/bin/openshell-sandbox "$BIN_PATH/openshell-sandbox"
+    chmod +x "$BIN_PATH/openshell-gateway" "$BIN_PATH/openshell-sandbox"
+    # Verify the copies are real regular files before relying on them.
+    if [ ! -f "$BIN_PATH/openshell-gateway" ] || [ ! -f "$BIN_PATH/openshell-sandbox" ]; then
+      echo "[Fix9] ERROR: binaries did not copy to $BIN_PATH as regular files."
+    fi
+    export NEMOCLAW_OPENSHELL_GATEWAY_BIN="$BIN_PATH/openshell-gateway"
+    export NEMOCLAW_OPENSHELL_SANDBOX_BIN="$BIN_PATH/openshell-sandbox"
   fi
 
   # Check if sandbox container is actually running (more reliable than
@@ -187,11 +257,12 @@ else
 
     # Pre-start the gateway compat container with correct binary mounts.
     # The nemoclaw CLI detects the already-running gateway and skips
-    # the broken bind-mount attempt.
-    echo "[Fix9] Pre-starting gateway container with correct binary mounts..."
+    # the broken bind-mount attempt. Host and container share $BIN_PATH,
+    # so the same path is valid as a HOST bind-mount source here.
+    echo "[Fix9] Pre-starting gateway container with correct binary mounts ($BIN_PATH)..."
     docker run -d --rm --name nemoclaw-openshell-gateway --network host \
-      --volume /tmp/nemoclaw-bin/openshell-gateway:/opt/nemoclaw/openshell-gateway:ro \
-      --volume /tmp/nemoclaw-bin/openshell-sandbox:/tmp/nemoclaw-bin/openshell-sandbox:ro \
+      --volume "$BIN_PATH/openshell-gateway:/opt/nemoclaw/openshell-gateway:ro" \
+      --volume "$BIN_PATH/openshell-sandbox:/tmp/nemoclaw-bin/openshell-sandbox:ro" \
       --volume /var/run/docker.sock:/var/run/docker.sock:rw \
       ubuntu:24.04 /opt/nemoclaw/openshell-gateway
 
@@ -287,8 +358,8 @@ if [ "$INSTALL_OK" = "true" ] && [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TEL
     # container's real IP (not host.openshell.internal = 127.0.0.1).
     echo "[Post-deploy] Updating gateway provider URL..."
     openshell provider update compatible-endpoint -g nemoclaw \
-      --config "OPENAI_BASE_URL=http://${WORKSPACE_IP}:8000/v1" 2>&1 \
-      && echo "[Post-deploy] Provider URL -> http://${WORKSPACE_IP}:8000/v1"
+      --config "OPENAI_BASE_URL=http://${WORKSPACE_IP}:${INFER_PORT}${OPENAI_PATH}" 2>&1 \
+      && echo "[Post-deploy] Provider URL -> http://${WORKSPACE_IP}:${INFER_PORT}${OPENAI_PATH}"
 
     # ─── Fix 2: Add inference.local to sandbox /etc/hosts ────────
     # With Docker driver, the gateway runs on the workspace container.
@@ -444,7 +515,7 @@ while True:
     done
     if ! echo "$MODELS" | grep -q "object"; then
       echo "[Post-deploy] WARNING: Inference verification failed."
-      echo "[Post-deploy] Check: socat 8000? vLLM up? DNS resolving?"
+      echo "[Post-deploy] Check: socat ${INFER_PORT}? vLLM up? DNS resolving?"
     fi
 
     echo "[Post-deploy] All fixes applied."

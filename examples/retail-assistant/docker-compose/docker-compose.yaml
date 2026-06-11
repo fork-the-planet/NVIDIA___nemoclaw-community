@@ -60,14 +60,15 @@ services:
     command: ["bash", "/scripts/init/startup.sh"]
     environment:
       DOCKER_HOST: unix:///var/run/docker.sock
-      # vLLM endpoint for socat (raw host:port, no scheme)
-      DYNAMO_HOST: ${DYNAMO_HOST}
+      # OpenAI-compatible inference endpoint (full base URL incl. /v1).
+      # startup.sh parses this into host:port for the socat proxy and
+      # derives NEMOCLAW_ENDPOINT_URL from its path.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
       # NemoClaw installer config
       NEMOCLAW_NON_INTERACTIVE: "1"
       NEMOCLAW_PROVIDER: "custom"
       NEMOCLAW_MODEL: ${NEMOCLAW_MODEL}
-      COMPATIBLE_API_KEY: "none"
-      NEMOCLAW_ENDPOINT_URL: "http://host.openshell.internal:${SOCAT_INFERENCE_PORT:-8000}/v1"
+      COMPATIBLE_API_KEY: ${OPENAI_API_KEY:-none}
       NEMOCLAW_SANDBOX_NAME: ${NEMOCLAW_SANDBOX_NAME}
       NEMOCLAW_POLICY_MODE: "skip"
       NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
@@ -83,9 +84,18 @@ services:
       NEMOCLAW_GATEWAY_PORT: ${NEMOCLAW_GATEWAY_PORT:-8080}
       NEMOCLAW_DASHBOARD_PORT: ${NEMOCLAW_DASHBOARD_PORT:-18789}
       OPENSHELL_DOCKER_NETWORK_NAME: ${OPENSHELL_DOCKER_NETWORK_NAME:-openshell-docker}
+      # Host path of the shared bin volume (below). Needed because Fix #9
+      # starts the gateway via the HOST docker daemon, which resolves
+      # bind-mount sources on the host filesystem, not the container's.
+      NEMOCLAW_BIN_PATH: ${NEMOCLAW_BIN_PATH:-/tmp/nemoclaw-bin}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${NEMOCLAW_BIN_PATH:-/tmp/nemoclaw-bin}:/tmp/nemoclaw-bin
+      # Mount the shared bin volume at the SAME path on host and container.
+      # Fix #9 starts the gateway via the HOST docker daemon (bind-mount
+      # sources resolve on the host), while the nemoclaw CLI spawns the same
+      # binaries locally inside this container. Using one identical path for
+      # both ensures every consumer agrees, even for a custom NEMOCLAW_BIN_PATH.
+      - ${NEMOCLAW_BIN_PATH:-/tmp/nemoclaw-bin}:${NEMOCLAW_BIN_PATH:-/tmp/nemoclaw-bin}
       - ./scripts:/scripts:ro
 
 volumes:

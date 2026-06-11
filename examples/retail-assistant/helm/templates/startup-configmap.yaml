@@ -35,17 +35,64 @@ data:
       hostname -I | awk '{print $1}'
     }
 
+    # ─── Helper: parse OPENAI_BASE_URL into scheme/host/port/path ──
+    # Full OpenAI-compatible base URL (e.g. http://svc:8000/v1 or
+    # https://integrate.api.nvidia.com/v1) is split into the pieces the
+    # socat proxy and gateway provider need:
+    #   OPENAI_SCHEME, OPENAI_HOST, OPENAI_PORT, OPENAI_PATH
+    parse_openai_base_url() {
+      # Backward-compat: derive from legacy DYNAMO_HOST (host:port) if set.
+      if [ -z "${OPENAI_BASE_URL:-}" ] && [ -n "${DYNAMO_HOST:-}" ]; then
+        OPENAI_BASE_URL="http://${DYNAMO_HOST}/v1"
+        echo "[Config] OPENAI_BASE_URL not set; derived from legacy DYNAMO_HOST: $OPENAI_BASE_URL"
+      fi
+      if [ -z "${OPENAI_BASE_URL:-}" ]; then
+        echo "[Config] ERROR: OPENAI_BASE_URL is not set."
+        return 1
+      fi
+      local url="$OPENAI_BASE_URL"
+      OPENAI_SCHEME="http"
+      case "$url" in
+        https://*) OPENAI_SCHEME="https"; url="${url#https://}" ;;
+        http://*)  OPENAI_SCHEME="http";  url="${url#http://}" ;;
+      esac
+      local hostport="${url%%/*}"
+      if [ "$hostport" = "$url" ]; then
+        OPENAI_PATH=""
+      else
+        OPENAI_PATH="/${url#*/}"
+      fi
+      OPENAI_PATH="${OPENAI_PATH%/}"
+      OPENAI_HOST="${hostport%%:*}"
+      if [ "${hostport#*:}" = "$hostport" ]; then
+        [ "$OPENAI_SCHEME" = "https" ] && OPENAI_PORT=443 || OPENAI_PORT=80
+      else
+        OPENAI_PORT="${hostport##*:}"
+      fi
+      echo "[Config] OPENAI_BASE_URL=$OPENAI_BASE_URL -> host=$OPENAI_HOST port=$OPENAI_PORT path='${OPENAI_PATH}' scheme=$OPENAI_SCHEME"
+    }
+
+    # ─── Helper: socat target for the inference proxy ──────────────
+    # Plain TCP for http upstreams; originate TLS for https upstreams.
+    openai_socat_target() {
+      if [ "$OPENAI_SCHEME" = "https" ]; then
+        echo "OPENSSL:${OPENAI_HOST}:${OPENAI_PORT},verify=0"
+      else
+        echo "TCP:${OPENAI_HOST}:${OPENAI_PORT}"
+      fi
+    }
+
     # ─── Helper: ensure nip.io DNS resolves via /etc/hosts ─────────
-    # nip.io DNS can be unreliable. If DYNAMO_HOST uses nip.io,
+    # nip.io DNS can be unreliable. If OPENAI_HOST uses nip.io,
     # extract the embedded IP and add an /etc/hosts entry.
-    ensure_dynamo_dns() {
-      local dynamo_host="${DYNAMO_HOST%%:*}"
-      if echo "$dynamo_host" | grep -q "nip.io"; then
+    ensure_openai_dns() {
+      local host="$OPENAI_HOST"
+      if echo "$host" | grep -q "nip.io"; then
         local ip
-        ip=$(echo "$dynamo_host" | grep -oP '\d+\.\d+\.\d+\.\d+')
+        ip=$(echo "$host" | grep -oP '\d+\.\d+\.\d+\.\d+')
         if [ -n "$ip" ]; then
-          echo "[DNS] Adding /etc/hosts: $ip $dynamo_host"
-          echo "$ip $dynamo_host" >> /etc/hosts
+          echo "[DNS] Adding /etc/hosts: $ip $host"
+          echo "$ip $host" >> /etc/hosts
         fi
       fi
     }
@@ -55,13 +102,19 @@ data:
     apt-get update -qq
     apt-get install -y -qq docker.io socat curl >/dev/null 2>&1
 
-    # ─── DNS fix: ensure nip.io domains resolve ───────────────────
-    ensure_dynamo_dns
+    # ─── DNS fix: parse OPENAI_BASE_URL + ensure nip.io resolves ──
+    parse_openai_base_url
+    ensure_openai_dns
+    # The sandbox/installer talk to the local socat proxy; preserve the
+    # upstream path (e.g. /v1) from OPENAI_BASE_URL.
+    # INFER_PORT is the workspace port the inference socat listens on.
+    INFER_PORT="${SOCAT_INFERENCE_PORT:-8000}"
+    export NEMOCLAW_ENDPOINT_URL="http://host.openshell.internal:${INFER_PORT}${OPENAI_PATH}"
 
     # [2/4] Start socat proxies
     echo "[2/4] Starting socat proxies..."
-    # Port 8000: vLLM / LLM endpoint (K8s service DNS set in DYNAMO_HOST)
-    socat TCP-LISTEN:8000,fork,reuseaddr TCP:"$DYNAMO_HOST" &
+    # Inference port: OpenAI-compatible LLM endpoint (forwarded to OPENAI_BASE_URL)
+    socat TCP-LISTEN:${INFER_PORT},fork,reuseaddr "$(openai_socat_target)" &
     SOCAT_8000_PID=$!
     # Port 8001: Retail API → K8s service DNS (reachable from this container)
     socat TCP-LISTEN:8001,fork,reuseaddr \
@@ -75,15 +128,17 @@ data:
     echo "127.0.0.1 host.openshell.internal" >> /etc/hosts
     sleep 1
 
-    # Verify socat 8000 is still alive (may have died if DNS failed)
+    # Verify the inference socat is still alive (may have died if DNS failed
+    # or the port is already in use).
     sleep 2
     if ! kill -0 "$SOCAT_8000_PID" 2>/dev/null; then
-      echo "[socat-8000] WARNING: socat died, restarting..."
-      socat TCP-LISTEN:8000,fork,reuseaddr TCP:"$DYNAMO_HOST" &
+      echo "[socat-${INFER_PORT}] WARNING: socat died, restarting..."
+      socat TCP-LISTEN:${INFER_PORT},fork,reuseaddr "$(openai_socat_target)" &
       SOCAT_8000_PID=$!
       sleep 1
       if ! kill -0 "$SOCAT_8000_PID" 2>/dev/null; then
-        echo "[socat-8000] ERROR: socat failed again. Inference will not work."
+        echo "[socat-${INFER_PORT}] ERROR: socat failed again. Inference will not work."
+        echo "[socat-${INFER_PORT}] Is port ${INFER_PORT} already in use? Set SOCAT_INFERENCE_PORT to a free port."
       fi
     fi
 
@@ -265,8 +320,8 @@ data:
         # ─── Fix 1: Update gateway provider URL ─────────────────────
         echo "[Post-deploy] Updating gateway provider URL..."
         openshell provider update compatible-endpoint -g nemoclaw \
-          --config "OPENAI_BASE_URL=http://host.openshell.internal:8000/v1" 2>&1 \
-          && echo "[Post-deploy] Provider URL -> http://host.openshell.internal:8000/v1"
+          --config "OPENAI_BASE_URL=http://host.openshell.internal:${INFER_PORT}${OPENAI_PATH}" 2>&1 \
+          && echo "[Post-deploy] Provider URL -> http://host.openshell.internal:${INFER_PORT}${OPENAI_PATH}"
 
         # ─── Fix 2: Add inference.local to sandbox /etc/hosts ────────
         # In Docker-based sandbox, inference.local should point to the Docker
@@ -393,7 +448,7 @@ data:
         done
         if ! echo "$MODELS" | grep -q "object"; then
           echo "[Post-deploy] WARNING: Inference verification failed."
-          echo "[Post-deploy] Check: socat 8000 alive? vLLM service up? DNS resolving?"
+          echo "[Post-deploy] Check: socat ${INFER_PORT} alive? vLLM service up? DNS resolving?"
         fi
 
         echo "[Post-deploy] All fixes applied."

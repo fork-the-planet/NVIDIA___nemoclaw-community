@@ -130,7 +130,7 @@ docker run --gpus '"device=1,2"' --name nemotron-super -p 8070:8000 --ipc=host \
 
 Once running, set your `.env` accordingly:
 ```env
-DYNAMO_HOST=<host>:8000
+OPENAI_BASE_URL=http://<host>:8000/v1
 NEMOCLAW_MODEL=nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8
 ```
 
