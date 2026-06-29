@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Rewrite Hermes's .env file with OpenShell provider-injected placeholders.
+"""Rewrite Hermes's .env file with OpenShell provider placeholders.
 
 Called by start.sh at sandbox boot. Reads NEMOCLAW_PROVIDER_PLACEHOLDER_KEYS
 (a space-separated list of env var names) and for each one whose value starts
-with `openshell:resolve:env:`, ensures the target env file has the latest
-placeholder string. Idempotent — no-op if values already match. Symlink
-guard lives in the bash caller.
+with `openshell:resolve:env:`, ensures the target env file has the canonical
+placeholder string. Idempotent — no-op if values already match. Symlink guard
+lives in the bash caller.
 """
 from __future__ import annotations
 
@@ -28,7 +28,10 @@ def main() -> int:
     for key in keys:
         value = os.environ.get(key, "")
         if value.startswith(prefix):
-            replacements[key] = value
+            # OpenShell may inject revision-pinned placeholders into process env
+            # (for example, openshell:resolve:env:v123_KEY). Hermes persists this
+            # file for long-running bridges, so store the stable provider lookup.
+            replacements[key] = f"{prefix}{key}"
 
     if not replacements:
         return 0

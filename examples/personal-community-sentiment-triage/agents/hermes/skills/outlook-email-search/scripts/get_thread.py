@@ -22,9 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-MS_GRAPH_ACCESS_TOKEN = os.environ.get(
-    "MS_GRAPH_ACCESS_TOKEN", "openshell:resolve:env:MS_GRAPH_ACCESS_TOKEN"
-)
+MS_GRAPH_ACCESS_TOKEN = "openshell:resolve:env:MS_GRAPH_ACCESS_TOKEN"
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 
