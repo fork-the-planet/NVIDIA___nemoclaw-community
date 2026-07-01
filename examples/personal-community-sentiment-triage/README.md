@@ -185,6 +185,7 @@ Skills are loaded on demand by the agent when relevant to a task. They live in [
 | `slack-channel-summarizer` | Resolve Slack channels by name or ID and read message history via the Slack Web API. |
 | `outlook-email-search` | Search the Outlook mailbox via Microsoft Graph to find and read emails relevant to a question. |
 | `cross-source-gap-analysis` | Synthesize findings across Slack, GitHub, and NVIDIA forum sources to identify gaps, alignment issues, and follow-ups. |
+| `nemoclaw-autoheal` | Guide users through sandbox health checks and optional host-side auto-heal setup. |
 
 ## Intended user journey
 
@@ -302,6 +303,25 @@ regardless of Phoenix config. If `PHOENIX_COLLECTOR_ENDPOINT` is set, `03-sandbo
 additionally bakes the endpoint into the image so OpenInference traces stream into
 Phoenix at `http://localhost:6006`.
 
+### Optional Phase 5 — Install auto-heal after first bring-up
+
+After the sandbox is Ready and the normal verification passes, you can opt in
+to user-level monitoring that keeps the host proxy, Hermes gateway forward, and
+Slack response path healthy. It is deliberately separate from `bring-up.sh` so
+first-time setup stays predictable and operators retain control over systemd.
+
+```console
+$ bash scripts/autoheal/install.sh --check
+$ bash scripts/autoheal/install.sh
+$ bash scripts/autoheal/sanity-check.sh
+```
+
+For a host TLS proxy, first set the explicit upstream origin in `.env`. For
+example, `NEMOCLAW_ENDPOINT_URL=http://host.openshell.internal:18080/v1` pairs
+with `NEMOCLAW_HOST_TLS_PROXY_UPSTREAM=https://inference-api.nvidia.com`.
+See [docs/auto-heal.md](docs/auto-heal.md) for manual checks, logs, repair, and
+uninstall instructions.
+
 ## What this example owns
 
 - **Owns** (in this directory): `agents/hermes/` (the full Hermes asset tree, staged
@@ -314,6 +334,8 @@ Phoenix at `http://localhost:6006`.
   - `snapshot.sh` / `restore.sh` — explicit Hermes state preservation across tear-down/bring-up cycles.
   - `download-traces.sh` — pull ATIF trace records from `/tmp/atif/` inside the sandbox into a host-side tarball. See [Capturing ATIF traces](#capturing-atif-traces) for the env knobs.
   - `host-tls-proxy.py` — optional plain-HTTP forwarder for hosts where the sandbox can't validate the inference endpoint's TLS chain (corporate VPN, split-horizon DNS, mkcert). See [docs/host-tls-proxy.md](docs/host-tls-proxy.md).
+  - `autoheal/` — optional user-systemd installer, watchdog, response monitor,
+    sanity checker, and unit templates. See [docs/auto-heal.md](docs/auto-heal.md).
 - **Generates and discards**: sed-patched `.Dockerfile.staged` and
   `.policy.staged.yaml` files at the example dir root. OpenShell does the actual
   build; we patch ARG defaults beforehand because `openshell sandbox create`
@@ -482,6 +504,8 @@ unless you remove the compose volumes.
 | `OPENSHELL_GATEWAY_ENDPOINT` | auto (`https://127.0.0.1:17670` for `openshell`, `http://127.0.0.1:17670` for `snap-docker`) | Override the local gateway endpoint if you registered it under a different URL. |
 | `NEMOCLAW_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Inference model passed to `openshell inference set`. |
 | `NEMOCLAW_ENDPOINT_URL` | `https://integrate.api.nvidia.com/v1` | Upstream base URL for the `compatible-endpoint` provider. (`OPENAI_BASE_URL` is also accepted as a fallback.) |
+| `NEMOCLAW_HOST_TLS_PROXY_UPSTREAM` | (none) | Optional HTTPS origin for the host TLS proxy. Required when `NEMOCLAW_ENDPOINT_URL` uses `host.openshell.internal:18080` and auto-heal should manage that proxy. |
+| `NEMOCLAW_HOST_TLS_PROXY_PORT` | `18080` | Host listener port for the optional TLS proxy. |
 | `COMPATIBLE_API_KEY` | (none) | Inference API key. Mirrors NemoClaw's `REMOTE_PROVIDER_CONFIG.custom`. (`OPENAI_API_KEY` is also accepted.) |
 | `GITHUB_TOKEN` | (none) | Optional GitHub token for authenticated live REST reads. Also feeds the optional host GitHub mirror. |
 | `GITHUB_READONLY_REPO` | `NVIDIA/OpenShell` | The only repo allowed by the live GitHub REST policy, formatted as `owner/repo`. Recreate the sandbox after changing it. |
