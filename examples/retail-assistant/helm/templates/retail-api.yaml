@@ -1,5 +1,7 @@
 {{- if .Values.retailApi.enabled }}
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # Retail API — FastAPI application with JWT auth and PostgreSQL-level RBAC.
 # Build the image from nvidia-hackathon-team4/api/ and set retailApi.image in values.yaml:
 #   docker build -t <your-registry>/retail-api:latest nvidia-hackathon-team4/api/
