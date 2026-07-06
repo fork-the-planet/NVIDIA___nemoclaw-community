@@ -1,5 +1,7 @@
 {{- if .Values.postgres.enabled }}
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # PersistentVolumeClaim for Postgres data.
 # NOTE: init.sql only runs when this PVC is empty (first Postgres start).
 # To reinitialize the database, delete this PVC and re-deploy.

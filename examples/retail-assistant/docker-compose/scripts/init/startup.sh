@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
 # NOTE: no "set -e" — the NemoClaw installer emits transient errors
 # (connection refused) during the gateway boot race. We handle errors
 # explicitly where needed.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 NemoClaw Retail API — Integration Tests
 Runs against the live stack (retail_database + retail_api containers must be up).

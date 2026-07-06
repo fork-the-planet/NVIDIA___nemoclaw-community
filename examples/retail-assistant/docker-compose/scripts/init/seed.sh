@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
 # ─── Database seed script ──────────────────────────────────────
 # Runs inside a postgres:17.3 container connected to retail_database.
 # Loads CSV data in FK-safe order with an idempotency guard.
