@@ -72,6 +72,7 @@ declare -A DOCKERFILE_ARGS=(
   [NEMOCLAW_BUILD_ID]="$(date +%s)"
 )
 # Optional patches — leave the Dockerfile default in place if unset.
+[[ -n "${GITHUB_TOKEN:-}" ]] && DOCKERFILE_ARGS[GITHUB_TOKEN]="$GITHUB_TOKEN"
 [[ -n "${NEMOCLAW_MODEL:-}" ]] && DOCKERFILE_ARGS[NEMOCLAW_MODEL]="$NEMOCLAW_MODEL"
 if [[ -n "${PHOENIX_COLLECTOR_ENDPOINT:-}" ]]; then
   echo "Phoenix endpoint: $PHOENIX_COLLECTOR_ENDPOINT — enabling OpenInference egress"
