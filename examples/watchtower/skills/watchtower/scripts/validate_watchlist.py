@@ -4,8 +4,9 @@
 """Fail-fast schema validator for watchtower watchlist YAML files.
 
 Watchtower watchlists use a deliberately restricted YAML subset: a top-level
-`watchlist:` name, a `topics:` list, and four fields per topic (`id`, `query`,
-`domains`, `why_it_matters`). PyYAML is not part of the Python standard
+`watchlist:` name, a `topics:` list, and topic entries with required fields
+(`id`, `query`, `why_it_matters`) plus optional fields (`seed_sources`,
+`exclude_domains`, `lookback_days`). PyYAML is not part of the Python standard
 library, so rather than take on a third-party dependency this validator reads
 that restricted subset itself with a small line-based parser. It is not a
 general-purpose YAML parser — do not point it at arbitrary YAML files.
@@ -22,11 +23,14 @@ import re
 import sys
 from pathlib import Path
 
-REQUIRED_TOPIC_KEYS = ("id", "query", "domains", "why_it_matters")
+REQUIRED_TOPIC_KEYS = ("id", "query", "why_it_matters")
+OPTIONAL_TOPIC_KEYS = ("seed_sources", "exclude_domains", "lookback_days")
+LIST_TOPIC_KEYS = {"seed_sources", "exclude_domains"}
+ALL_TOPIC_KEYS = set(REQUIRED_TOPIC_KEYS) | set(OPTIONAL_TOPIC_KEYS)
 
 _TOP_KEY_RE = re.compile(r"^(\w[\w-]*):\s*(.*)$")
 _TOPIC_START_RE = re.compile(r"^\s*-\s*id:\s*(.+)$")
-_TOPIC_FIELD_RE = re.compile(r"^\s+(query|domains|why_it_matters):\s*(.*)$")
+_TOPIC_FIELD_RE = re.compile(r"^\s+([\w-]+):\s*(.*)$")
 
 
 class WatchlistError(ValueError):
@@ -40,11 +44,11 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
-def _parse_domains(raw: str) -> list[str]:
+def _parse_list(raw: str) -> list[str]:
     raw = raw.strip()
     if raw.startswith("[") and raw.endswith("]"):
         raw = raw[1:-1]
-    return [_strip_quotes(d) for d in raw.split(",") if _strip_quotes(d)]
+    return [_strip_quotes(item) for item in raw.split(",") if _strip_quotes(item)]
 
 
 def parse_watchlist(path: Path) -> dict:
@@ -73,7 +77,14 @@ def parse_watchlist(path: Path) -> dict:
         field = _TOPIC_FIELD_RE.match(line)
         if field and current is not None:
             key, value = field.group(1), field.group(2)
-            current[key] = _parse_domains(value) if key == "domains" else _strip_quotes(value)
+            if key not in ALL_TOPIC_KEYS:
+                raise WatchlistError(f"{path}:{lineno}: unknown topic field '{key}'")
+            if key in LIST_TOPIC_KEYS:
+                current[key] = _parse_list(value)
+            elif key == "lookback_days":
+                current[key] = _strip_quotes(value)
+            else:
+                current[key] = _strip_quotes(value)
             continue
 
         top = _TOP_KEY_RE.match(line)
@@ -84,6 +95,8 @@ def parse_watchlist(path: Path) -> dict:
             key, value = top.group(1), top.group(2)
             if key == "watchlist":
                 name = _strip_quotes(value)
+            elif key != "topics":
+                raise WatchlistError(f"{path}:{lineno}: unknown top-level field '{key}'")
             continue
 
         raise WatchlistError(f"{path}:{lineno}: unrecognized line: {raw_line!r}")
@@ -113,10 +126,21 @@ def validate(parsed: dict, source: str) -> None:
                     f"{source}: topic '{label}' is missing required key '{key}'"
                 )
 
-        if not isinstance(topic["domains"], list) or not topic["domains"]:
-            raise WatchlistError(
-                f"{source}: topic '{label}' must declare at least one domain in 'domains'"
-            )
+        for key in LIST_TOPIC_KEYS:
+            if key in topic and not isinstance(topic[key], list):
+                raise WatchlistError(f"{source}: topic '{label}' field '{key}' must be a list")
+
+        if "lookback_days" in topic:
+            try:
+                lookback_days = int(topic["lookback_days"])
+            except (TypeError, ValueError):
+                raise WatchlistError(
+                    f"{source}: topic '{label}' field 'lookback_days' must be a positive integer"
+                ) from None
+            if lookback_days <= 0:
+                raise WatchlistError(
+                    f"{source}: topic '{label}' field 'lookback_days' must be a positive integer"
+                )
 
         if topic["id"] in seen_ids:
             raise WatchlistError(f"{source}: duplicate topic id '{topic['id']}'")

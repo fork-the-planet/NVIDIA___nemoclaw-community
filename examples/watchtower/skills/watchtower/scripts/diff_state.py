@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Deterministically filter watchtower candidate items against seen-state and watchlist domains.
+"""Deterministically filter watchtower candidate items against seen-state and excludes.
 
-Reads candidate items as JSON lines on stdin (fields: topic_id, url, title).
-Drops any item whose URL is already recorded in the state file, or whose host
-is not within that item's topic's allowed domains (subdomain suffix match).
-Surviving items are emitted as JSON lines on stdout, unchanged.
+Reads candidate items as JSON lines on stdin. Required fields are `topic_id`,
+`url`, and `title`; any additional fields such as `snippet` or `content` are
+preserved. Drops any item whose URL is already recorded in the state file, any
+item for an unknown topic, and any item whose host matches that topic's optional
+`exclude_domains` list (subdomain suffix match).
 
 This script makes no network calls and no significance judgment — it only
-enforces the dedup and domain rules the watchtower skill prompt describes.
-The prompt suggests which queries to run; this script enforces what counts
-as new and in-scope. See skills/watchtower/SKILL.md.
+enforces mechanical deduplication and explicit negative filters. The prompt and
+LLM decide relevance, credibility, and significance. See skills/watchtower/SKILL.md.
 
 Usage:
     <candidates.jsonl python3 diff_state.py --watchlist <path> --state <path> >survivors.jsonl
@@ -26,7 +26,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 _TOPIC_START_RE = re.compile(r"^\s*-\s*id:\s*(.+)$")
-_DOMAINS_FIELD_RE = re.compile(r"^\s+domains:\s*(.*)$")
+_EXCLUDE_DOMAINS_FIELD_RE = re.compile(r"^\s+exclude_domains:\s*(.*)$")
 
 
 def _strip_quotes(value: str) -> str:
@@ -36,30 +36,31 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
-def _parse_domains(raw: str) -> list[str]:
+def _parse_list(raw: str) -> list[str]:
     raw = raw.strip()
     if raw.startswith("[") and raw.endswith("]"):
         raw = raw[1:-1]
-    return [_strip_quotes(d) for d in raw.split(",") if _strip_quotes(d)]
+    return [_strip_quotes(item) for item in raw.split(",") if _strip_quotes(item)]
 
 
-def load_topic_domains(watchlist_path: Path) -> dict[str, list[str]]:
-    """Extract {topic_id: [domains]} from a watchlist YAML file.
+def load_topic_excludes(watchlist_path: Path) -> dict[str, list[str]]:
+    """Extract {topic_id: [exclude_domains]} from a watchlist YAML file.
 
-    Uses the same restricted line-based reading as validate_watchlist.py.
-    Run validate_watchlist.py first — this assumes a schema-valid file.
+    Uses the same restricted line-based reading as validate_watchlist.py. Run
+    validate_watchlist.py first — this assumes a schema-valid file.
     """
-    domains_by_topic: dict[str, list[str]] = {}
+    excludes_by_topic: dict[str, list[str]] = {}
     current_id: str | None = None
     for line in watchlist_path.read_text(encoding="utf-8").splitlines():
         topic_start = _TOPIC_START_RE.match(line)
         if topic_start:
             current_id = _strip_quotes(topic_start.group(1))
+            excludes_by_topic.setdefault(current_id, [])
             continue
-        domains_field = _DOMAINS_FIELD_RE.match(line)
-        if domains_field and current_id is not None:
-            domains_by_topic[current_id] = _parse_domains(domains_field.group(1))
-    return domains_by_topic
+        exclude_field = _EXCLUDE_DOMAINS_FIELD_RE.match(line)
+        if exclude_field and current_id is not None:
+            excludes_by_topic[current_id] = _parse_list(exclude_field.group(1))
+    return excludes_by_topic
 
 
 def load_seen_urls(state_path: Path) -> set[str]:
@@ -84,9 +85,9 @@ def host_in_domains(host: str, domains: list[str]) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Filter candidate items on stdin (JSON lines: topic_id, url, title) against "
-            "seen-state and watchlist domain rules. Surviving items are written to stdout "
-            "as JSON lines, one per line, unchanged."
+            "Filter candidate items on stdin (JSON lines: topic_id, url, title, ...) "
+            "against seen-state and optional exclude_domains rules. Surviving items "
+            "are written to stdout as JSON lines, one per line, unchanged."
         ),
     )
     parser.add_argument("--watchlist", required=True, type=Path, help="Path to the active watchlist YAML file")
@@ -97,10 +98,13 @@ def main() -> int:
         print(f"error: watchlist file not found: {args.watchlist}", file=sys.stderr)
         return 1
 
-    domains_by_topic = load_topic_domains(args.watchlist)
+    excludes_by_topic = load_topic_excludes(args.watchlist)
     seen_urls = load_seen_urls(args.state)
 
     survivors = 0
+    dropped_seen = 0
+    dropped_excluded = 0
+    dropped_unknown = 0
     for lineno, raw_line in enumerate(sys.stdin, start=1):
         line = raw_line.strip()
         if not line:
@@ -118,22 +122,30 @@ def main() -> int:
             print(f"warning: stdin line {lineno}: missing topic_id or url, skipping", file=sys.stderr)
             continue
 
-        domains = domains_by_topic.get(topic_id)
-        if domains is None:
+        excludes = excludes_by_topic.get(topic_id)
+        if excludes is None:
             print(f"warning: stdin line {lineno}: unknown topic_id '{topic_id}', skipping", file=sys.stderr)
+            dropped_unknown += 1
             continue
 
         if url in seen_urls:
+            dropped_seen += 1
             continue
 
         host = urlparse(url).hostname or ""
-        if not host_in_domains(host, domains):
+        if host_in_domains(host, excludes):
+            dropped_excluded += 1
             continue
 
         print(json.dumps(item))
         survivors += 1
 
-    print(f"diff_state: {survivors} item(s) survived dedup + domain filtering", file=sys.stderr)
+    print(
+        "diff_state: "
+        f"{survivors} survivor(s); "
+        f"dropped {dropped_seen} seen, {dropped_excluded} excluded-domain, {dropped_unknown} unknown-topic item(s)",
+        file=sys.stderr,
+    )
     return 0
 
 

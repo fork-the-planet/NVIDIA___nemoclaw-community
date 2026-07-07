@@ -1,20 +1,21 @@
 # Watchtower: Scheduled Web Surveillance with Tavily
 
 Watchtower is an unattended web-surveillance agent built on the NemoClaw
-OpenClaw harness. A `watchlist.yaml` defines the topics to monitor and the
-authoritative domains for each topic. An OpenClaw Cron Job periodically invokes
-the agent; each sweep runs site-scoped `web_search` queries (Tavily provider),
+OpenClaw harness. A `watchlist.yaml` defines the topics to monitor, optional
+seed sources, optional excluded domains, and recency hints. An OpenClaw Cron
+Job periodically invokes the agent; each sweep runs Tavily `web_search`,
 deterministically diffs the results against a persistent seen-items state file,
-judges the significance of only the genuinely new items, and writes a cited
-Markdown digest plus a structured JSON changelog to `outputs/`. State advances
-only after the digest is written, so a crashed run re-processes items on the
-next sweep instead of losing them.
+uses `tavily_extract` when snippets are not enough, judges the significance of
+only the genuinely new items, and writes a cited Markdown digest plus a
+structured JSON changelog to `outputs/`. State advances only after the digest
+is written, so a crashed run re-processes items on the next sweep instead of
+losing them.
 
-The design principle throughout: **the prompt suggests, the scripts
-enforce**. Dedup and domain filtering are deterministic Python — never LLM
-judgment. The LLM's judgment is confined to the one question it is good at
-and a script cannot answer: how significant is a genuinely new item, given
-why the topic is being watched.
+The design principle throughout: **scripts enforce mechanics; the agent makes
+editorial judgments**. Dedup and explicit negative filters are deterministic
+Python — never LLM memory. The LLM decides the questions scripts cannot answer:
+is a new result relevant, is the source credible, and how significant is it
+given why the topic is being watched?
 
 ## Architecture
 
@@ -53,7 +54,7 @@ flowchart LR
                 cron -->|"periodic\nagent message"| agent
                 cron --> runs
 
-                agent -->|"built-in web_search\n(provider: tavily)"| l7
+                agent -->|"Tavily web_search\n+ tavily_extract"| l7
                 agent -->|"script dispatch"| skill
                 skill --> wl
                 skill --> st
@@ -65,7 +66,7 @@ flowchart LR
         gateway <--> l7
     end
 
-    l7 -->|"HTTPS POST\nsearch queries"| tavily
+    l7 -->|"HTTPS POST\nsearch + extract"| tavily
     agent -->|"HTTPS POST\nLLM inference"| llm
 
     style sandbox fill:#1a237e,stroke:#3949ab,stroke-width:2px,color:#fff
@@ -89,23 +90,22 @@ Each sweep follows the procedure in
 [`skills/watchtower/SKILL.md`](skills/watchtower/SKILL.md):
 
 1. **Validate** — `validate_watchlist.py` fail-fast checks the active
-   watchlist schema (every topic needs `id`, `query`, non-empty `domains`,
-   `why_it_matters`). An invalid watchlist stops the run before any search.
+   watchlist schema (every topic needs `id`, `query`, and `why_it_matters`;
+   `seed_sources`, `exclude_domains`, and `lookback_days` are optional). An
+   invalid watchlist stops the run before any search.
 2. **Search** — per topic, the agent runs 1-2 `web_search` queries built from
-   the topic's `query` and scoped with `site:` operators from its `domains`,
-   e.g. `new Nemotron model release announcement site:huggingface.co OR
-   site:developer.nvidia.com`.
+   the topic's `query`. Optional `seed_sources` can add one source-biased query,
+   and optional `lookback_days` biases searches toward recent results.
 3. **Diff** — every result is collected as a JSON line
-   (`topic_id`, `url`, `title`) and piped through `diff_state.py`, which
-   deterministically drops anything already in `state/seen.json` or whose
-   host is not within the topic's domains (subdomain suffix match). `site:`
-   scoping is a suggestion to the search engine; this filter is the
-   enforcement.
+   (`topic_id`, `url`, `title`, plus optional snippet/content fields) and piped
+   through `diff_state.py`, which deterministically drops anything already in
+   `state/seen.json`, anything for an unknown topic, and anything matching the
+   topic's optional `exclude_domains`.
 4. **Extract + judge** — only the survivors reach the LLM. If the search
    snippet is not enough, the agent uses `tavily_extract` on those surviving
-   on-domain URLs, then rates significance against the topic's
-   `why_it_matters`. Noise is logged as skipped with a one-line reason instead
-   of digested.
+   URLs, then rates relevance, credibility, and significance against the
+   topic's `why_it_matters`. Noise is logged as skipped with a one-line reason
+   instead of digested.
 5. **Write** — the agent writes `outputs/digest-<run-id>.md` (per topic: what
    changed, why it matters, source links — or a short "no changes" digest)
    and `outputs/changelog-<run-id>.json` (array of
@@ -200,8 +200,8 @@ the search finds is new:
 bash scripts/sweep.sh
 ```
 
-The agent writes `outputs/digest-<run-id>.md` with every on-domain item it
-found, and `state/seen.json` now records them.
+The agent writes `outputs/digest-<run-id>.md` with every relevant new item it
+found, and `state/seen.json` now records the digested URLs.
 
 **2. Immediate re-run → "no changes", proving dedup.** Run the same command
 again right away:
@@ -280,14 +280,17 @@ is needed.
 ## Watchlists
 
 A watchlist is a YAML file with one required top-level name and a list of
-topics:
+topics. Each topic has required intent fields plus optional search hints and
+negative filters:
 
 ```yaml
 watchlist: dev-ecosystem
 topics:
   - id: nemotron-releases
     query: "new Nemotron model release announcement"
-    domains: [huggingface.co, developer.nvidia.com]
+    seed_sources: [huggingface.co, developer.nvidia.com]
+    exclude_domains: [wikipedia.org]
+    lookback_days: 14
     why_it_matters: "Track new model drops relevant to NemoClaw users"
 ```
 
@@ -297,18 +300,19 @@ Per topic:
 |---|---|
 | `id` | Stable identifier; used in state, digests, and changelogs. Do not rename an id casually — state entries are keyed to it. |
 | `query` | The search intent, phrased for a web search engine. |
-| `domains` | The only acceptable source hosts for this topic. Subdomains match (a result on `download.pytorch.org` is within `pytorch.org`). Enforced by `diff_state.py`, not by the prompt. |
+| `seed_sources` | Optional source hints. The agent may run a source-biased query using `site:` operators, but these are not a hard allowlist. |
+| `exclude_domains` | Optional hard negative filter for noisy hosts. Subdomains match, and `diff_state.py` enforces this mechanically. |
+| `lookback_days` | Optional recency hint. The agent should bias searches toward this window, but Tavily/search freshness is still judged from returned result content. |
 | `why_it_matters` | The significance yardstick the LLM judges new items against, and the "why it matters" line in digests. |
 
 To edit, change the YAML and re-run — `validate_watchlist.py` runs at the
 start of every sweep and fails fast on schema violations. To monitor a
-different domain entirely, swap the preset:
+different topic set, swap the preset:
 [`watchlists/regulatory.yaml`](watchlists/regulatory.yaml) tracks EU PFAS
-restriction updates (`echa.europa.eu`), OFAC sanctions designations
-(`ofac.treasury.gov`), and FDA device recalls (`fda.gov`). Presets share one
-state file safely — state items are keyed by topic id and URL — but if you
-want independent sweep histories, point each preset's runs at its own
-`--state` path.
+restriction updates, OFAC sanctions designations, and FDA device recalls.
+Presets share one state file safely — state items are keyed by topic id and
+URL — but if you want independent sweep histories, point each preset's runs at
+its own `--state` path.
 
 ## Security model
 
@@ -321,11 +325,11 @@ want independent sweep histories, point each preset's runs at its own
   the placeholder `openshell:resolve:env:TAVILY_API_KEY`; the L7 proxy
   substitutes the real key on egress. A fully compromised sandbox can spend
   your search quota but cannot exfiltrate the credential.
-- **Scope is enforced, not requested.** `site:` operators steer the search
-  engine, but the guarantee that digests only cite watchlist domains comes
-  from `diff_state.py` — a deterministic filter the LLM cannot talk its way
-  around. The same applies to dedup: "is this new?" is answered by the state
-  file, never by model memory.
+- **Mechanical filters are enforced, not requested.** `seed_sources` steer the
+  search engine, but only as hints. Hard negative filters (`exclude_domains`)
+  and dedup are handled by `diff_state.py`, a deterministic script the LLM
+  cannot talk its way around. "Is this new?" is answered by the state file,
+  never by model memory.
 - **Crash-safe state.** `commit_state.py` writes atomically
   (temp file + rename) and runs only after outputs exist, so no failure mode
   leaves the state file corrupt or silently skips items.

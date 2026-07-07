@@ -2,20 +2,25 @@ watchlist: dev-ecosystem
 topics:
   - id: nemotron-releases
     query: "new Nemotron model release announcement"
-    domains: [huggingface.co, developer.nvidia.com]
+    seed_sources: [huggingface.co, developer.nvidia.com]
+    lookback_days: 14
     why_it_matters: "Track new model drops relevant to NemoClaw users"
 
   - id: cuda-toolkit-releases
     query: "CUDA Toolkit release notes new version"
-    domains: [docs.nvidia.com, developer.nvidia.com]
+    seed_sources: [docs.nvidia.com, developer.nvidia.com]
+    lookback_days: 30
     why_it_matters: "New CUDA Toolkit versions change build requirements, driver compatibility, and kernel-level performance behavior that GPU workloads depend on"
 
   - id: pytorch-releases
     query: "PyTorch new release changelog"
-    domains: [github.com, pytorch.org]
+    seed_sources: [github.com, pytorch.org]
+    exclude_domains: [pypi.org]
+    lookback_days: 30
     why_it_matters: "PyTorch releases can introduce breaking API changes, deprecations, or new features that affect training and inference pipelines"
 
   - id: vllm-releases
     query: "vLLM new release changelog"
-    domains: [github.com, docs.vllm.ai]
+    seed_sources: [github.com, docs.vllm.ai]
+    lookback_days: 30
     why_it_matters: "vLLM is a common serving engine for open models including Nemotron; new releases affect performance, supported models, and API compatibility"
