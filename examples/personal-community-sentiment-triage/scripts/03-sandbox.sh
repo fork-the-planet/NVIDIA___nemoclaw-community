@@ -72,7 +72,6 @@ declare -A DOCKERFILE_ARGS=(
   [NEMOCLAW_BUILD_ID]="$(date +%s)"
 )
 # Optional patches — leave the Dockerfile default in place if unset.
-[[ -n "${GITHUB_TOKEN:-}" ]] && DOCKERFILE_ARGS[GITHUB_TOKEN]="$GITHUB_TOKEN"
 [[ -n "${NEMOCLAW_MODEL:-}" ]] && DOCKERFILE_ARGS[NEMOCLAW_MODEL]="$NEMOCLAW_MODEL"
 if [[ -n "${PHOENIX_COLLECTOR_ENDPOINT:-}" ]]; then
   echo "Phoenix endpoint: $PHOENIX_COLLECTOR_ENDPOINT — enabling OpenInference egress"
@@ -103,6 +102,24 @@ for arg in "${!DOCKERFILE_ARGS[@]}"; do
   sed -i -e "s|^ARG ${arg}=.*|ARG ${arg}=${value}|" "$STAGED_DOCKERFILE"
 done
 
+BUILD_FROM="$STAGED_DOCKERFILE"
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  command -v docker >/dev/null || {
+    echo "docker not in PATH; required for authenticated sandbox image build" >&2
+    exit 1
+  }
+  safe_sandbox_name="$(printf '%s' "$SANDBOX_NAME" \
+    | tr '[:upper:]' '[:lower:]' \
+    | tr -c 'a-z0-9_.-' '-')"
+  BUILD_FROM="nemoclaw-hermes-sandbox:${safe_sandbox_name}-${DOCKERFILE_ARGS[NEMOCLAW_BUILD_ID]}"
+  echo "Building sandbox image $BUILD_FROM with BuildKit secret-backed GitHub authentication"
+  DOCKER_BUILDKIT=1 GITHUB_TOKEN="$GITHUB_TOKEN" docker build \
+    --secret id=github_token,env=GITHUB_TOKEN \
+    -t "$BUILD_FROM" \
+    -f "$STAGED_DOCKERFILE" \
+    "$EXAMPLE_DIR"
+fi
+
 # ── Stage policy and patch per-run repo scope ───────────────────────────
 cp "$EXAMPLE_DIR/policy.yaml" "$STAGED_POLICY"
 sed -i \
@@ -132,9 +149,9 @@ atif_remote_enabled && PROVIDER_FLAGS+=(--provider "$SANDBOX_NAME-atif-export-re
 # SIGTERM. If `pgrep -af openshell | grep -v grep` is empty after this
 # script returns on 0.0.50+, the bug is fixed and the `setsid` wrapper +
 # SIGKILL backstop below can be simplified to plain `&` + `kill -TERM $PID`.
-echo "Creating sandbox $SANDBOX_NAME (OpenShell will build the image)…"
+echo "Creating sandbox $SANDBOX_NAME from $BUILD_FROM…"
 setsid openshell sandbox create \
-  --from "$STAGED_DOCKERFILE" \
+  --from "$BUILD_FROM" \
   --name "$SANDBOX_NAME" \
   --policy "$STAGED_POLICY" \
   "${PROVIDER_FLAGS[@]}" \

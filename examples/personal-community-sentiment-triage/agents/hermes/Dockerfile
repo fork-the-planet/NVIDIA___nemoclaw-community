@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -20,18 +21,19 @@ ARG BASE_IMAGE=ghcr.io/nvidia/nemoclaw/hermes-sandbox-base@sha256:f76a2ed0509570
 # unconditionally via the cli crate's `object-store` feature.
 FROM ${BASE_IMAGE} AS nemo-relay-builder
 ARG NEMO_RELAY_CLI_VERSION=0.3.0
-# Authenticated GitHub API for cargo-binstall (avoids anonymous rate-limit 403
-# on shared egress IPs). Builder stage only; never reaches the final image.
-ARG GITHUB_TOKEN=
 # PATH includes cargo's bin dir so the install script's --self-install step
 # finds it (silences its cosmetic "path is missing /root/.cargo/bin" warning)
 # and cargo-binstall resolves by name on the next line.
-RUN export PATH="/root/.cargo/bin:$PATH" \
+RUN --mount=type=secret,id=github_token,required=false \
+    export PATH="/root/.cargo/bin:$PATH" \
     && apt-get update -qq \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && curl -L --proto '=https' --tlsv1.2 -sSf \
        https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
+    && if [ -s /run/secrets/github_token ]; then \
+         export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
+       fi \
     && cargo-binstall --no-confirm --strategies crate-meta-data \
        --install-path /out/bin "nemo-relay-cli@${NEMO_RELAY_CLI_VERSION}"
 # --strategies crate-meta-data: only resolve the crate's own [metadata.binstall]
