@@ -4,6 +4,7 @@
 import importlib.util
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -36,6 +37,11 @@ class SlackResponseMonitorTest(unittest.TestCase):
             path = Path(directory) / ".env"
             path.write_text("SLACK_ALLOWED_IDS='U123,D456'\n# ignored\n")
             self.assertEqual(MONITOR.read_env(path)["SLACK_ALLOWED_IDS"], "U123,D456")
+
+    def test_remediate_invokes_watchdog_with_bash(self) -> None:
+        with mock.patch.object(MONITOR.subprocess, "run") as run:
+            MONITOR.remediate("validation", dry_run=False)
+        run.assert_called_once_with(["bash", str(MONITOR.WATCHDOG)], check=False)
 
 
 if __name__ == "__main__":

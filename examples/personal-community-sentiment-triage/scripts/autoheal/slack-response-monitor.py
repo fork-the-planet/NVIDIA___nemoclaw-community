@@ -165,7 +165,7 @@ def recent_gateway_failures() -> set[str]:
 def remediate(reason: str, dry_run: bool) -> None:
     log(f"recovery requested: {reason}")
     if not dry_run:
-        subprocess.run([str(WATCHDOG)], check=False)
+        subprocess.run(["bash", str(WATCHDOG)], check=False)
 
 
 def main() -> int:
