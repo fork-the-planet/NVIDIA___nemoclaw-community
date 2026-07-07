@@ -9,8 +9,8 @@
 #   skills/watchtower/  -> /sandbox/.openclaw/skills/watchtower/  (skill discovery dir)
 #   watchlists/         -> $WORKSPACE/watchlists/
 #   prompts/AGENTS.md   -> $WORKSPACE/AGENTS.md
-#   runtime/watchtowerd.sh -> $WORKSPACE/bin/watchtowerd.sh (in-sandbox scheduler)
-#   state/, outputs/, logs/, run/ created under $WORKSPACE
+#   runtime/openclaw-cron-rpc.mjs -> $WORKSPACE/bin/ (Cron Jobs helper)
+#   state/, outputs/       created under $WORKSPACE
 #
 # WORKSPACE defaults to the single-agent workspace path; override for named
 # agents (e.g. WORKSPACE=/sandbox/.openclaw/workspace-main).
@@ -19,7 +19,7 @@
 #
 # Try after this script:
 #   $ bash scripts/sweep.sh   # one immediate sweep
-#   $ bash scripts/start.sh   # unattended scheduler
+#   $ bash scripts/start.sh   # OpenClaw Cron Job scheduler
 
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,16 +39,16 @@ fi
 echo "Installing watchtower assets into sandbox '$NEMOCLAW_SANDBOX_NAME' (workspace: $WORKSPACE)"
 
 run openshell sandbox exec --name "$NEMOCLAW_SANDBOX_NAME" -- \
-  mkdir -p "$SKILLS_DIR" "$WORKSPACE/bin" "$WORKSPACE/state" "$WORKSPACE/outputs" "$WORKSPACE/logs" "$WORKSPACE/run"
+  mkdir -p "$SKILLS_DIR" "$WORKSPACE/bin" "$WORKSPACE/state" "$WORKSPACE/outputs"
 
 # `openshell sandbox upload` copies the source directory INTO the
 # destination (cp semantics), so upload to the parent directory.
 run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/skills/watchtower" "$SKILLS_DIR/"
 run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/watchlists" "$WORKSPACE/"
 run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/prompts/AGENTS.md" "$WORKSPACE/"
-run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/runtime/watchtowerd.sh" "$WORKSPACE/bin/"
-run openshell sandbox exec --name "$NEMOCLAW_SANDBOX_NAME" -- chmod +x "$WORKSPACE/bin/watchtowerd.sh"
+run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/runtime/openclaw-cron-rpc.mjs" "$WORKSPACE/bin/"
+run openshell sandbox exec --name "$NEMOCLAW_SANDBOX_NAME" -- chmod +x "$WORKSPACE/bin/openclaw-cron-rpc.mjs"
 
 echo
 echo "Installed. Run once with: bash scripts/sweep.sh"
-echo "Start unattended scheduling with: bash scripts/start.sh"
+echo "Start the OpenClaw Cron Job with: bash scripts/start.sh"

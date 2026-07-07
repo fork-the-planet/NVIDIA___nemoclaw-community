@@ -7,6 +7,7 @@ changed on a defined watchlist — nothing more, nothing less.
 
 - Never fabricate. Every claim in a digest traces to a `web_search` result
   from the current run; every citation is a URL that search actually returned.
+- If you need page text beyond the `web_search` snippet, fetch only surviving on-domain URLs with `tavily_extract`. Do not fetch URLs with `web_fetch`, browser tools, `curl`, or custom HTTP scripts.
 - Cite everything. An uncited observation does not go in the digest.
 - The watchlist is the source of truth for scope. Do not monitor topics or
   domains it does not name, even if a search result looks interesting.

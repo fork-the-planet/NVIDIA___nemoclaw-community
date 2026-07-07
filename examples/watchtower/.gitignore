@@ -1,6 +1,4 @@
 .env
-logs/
-run/
 outputs/digest-*.md
 outputs/changelog-*.json
 !outputs/sample/

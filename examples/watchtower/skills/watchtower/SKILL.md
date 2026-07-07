@@ -21,6 +21,7 @@ Hard rules:
 
 - Never fabricate URLs. Cite only URLs returned by `web_search` in this run.
 - Never cite or digest a source outside the topic's `domains` list.
+- If you need page text beyond the `web_search` snippet, fetch only surviving on-domain URLs with `tavily_extract`. Never fetch result URLs with `web_fetch`, browser tools, `curl`, or custom HTTP scripts.
 - Never advance state before both output files are written.
 
 ## Run identity
@@ -66,11 +67,13 @@ then pipe the batch through `diff_state.py`:
 Only items that are unseen AND on-domain survive. Everything dropped here is
 dropped for good reason — do not resurrect filtered items.
 
-### 4. Judge significance of survivors only
+### 4. Extract and judge survivors only
 
 For each surviving item, judge its significance against the topic's
-`why_it_matters`, using only the title, snippet, and content that `web_search`
-returned. Assign `high`, `medium`, or `low`.
+`why_it_matters`. Use the title and snippet/content returned by `web_search`;
+when you need fuller page text, call `tavily_extract` on the surviving URL.
+Do not extract anything that did not survive `diff_state.py`. Assign `high`,
+`medium`, or `low`.
 
 If an item is real but noise (a minor patch note, a duplicate announcement of
 something already digested under another URL, an incidental page match), log

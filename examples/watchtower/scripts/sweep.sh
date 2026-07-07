@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # One-shot watchtower sweep: sends the sweep prompt to the OpenClaw agent in
-# a single non-interactive turn. The in-sandbox scheduler uses the same sweep
-# path via runtime/watchtowerd.sh; this script remains useful for ad-hoc runs.
+# a single non-interactive turn. Useful for ad-hoc runs and for debugging the
+# same prompt that the OpenClaw Cron Job runs on schedule.
 #
 # Usage:
 #   bash scripts/sweep.sh [watchlist-path]
@@ -20,19 +20,10 @@ source "$DIR/_lib.sh"
 
 command -v openshell >/dev/null || { echo "openshell not in PATH — run scripts/onboard.sh first" >&2; exit 1; }
 
-WORKSPACE="${WORKSPACE:-/sandbox/.openclaw/workspace}"
 WATCHLIST="${1:-${WATCHTOWER_WATCHLIST:-watchlists/dev-ecosystem.yaml}}"
 
 echo "Sweeping $WATCHLIST in sandbox '$NEMOCLAW_SANDBOX_NAME'"
 # No --local: NemoClaw sandboxes reject it (it would bypass the gateway's
 # managed inference route, secret scanning, and network policy).
-run openshell sandbox exec --name "$NEMOCLAW_SANDBOX_NAME" -- env \
-  WATCHTOWER_WORKSPACE="$WORKSPACE" \
-  WATCHTOWER_WATCHLIST="$WATCHLIST" \
-  bash -lc '
-    if [ -x "$WATCHTOWER_WORKSPACE/bin/watchtowerd.sh" ]; then
-      "$WATCHTOWER_WORKSPACE/bin/watchtowerd.sh" once
-    else
-      openclaw agent --agent main -m "Run a watchtower sweep of $WATCHTOWER_WATCHLIST."
-    fi
-  '
+run openshell sandbox exec --name "$NEMOCLAW_SANDBOX_NAME" -- \
+  openclaw agent --agent main -m "Run a watchtower sweep of $WATCHLIST."

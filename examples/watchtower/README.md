@@ -2,13 +2,13 @@
 
 Watchtower is an unattended web-surveillance agent built on the NemoClaw
 OpenClaw harness. A `watchlist.yaml` defines the topics to monitor and the
-authoritative domains for each topic. The sandbox contains a small scheduler
-that periodically invokes the agent; each sweep runs site-scoped `web_search`
-queries (Tavily provider), deterministically diffs the results against a
-persistent seen-items state file, judges the significance of only the genuinely
-new items, and writes a cited Markdown digest plus a structured JSON changelog
-to `outputs/`. State advances only after the digest is written, so a crashed
-run re-processes items on the next sweep instead of losing them.
+authoritative domains for each topic. An OpenClaw Cron Job periodically invokes
+the agent; each sweep runs site-scoped `web_search` queries (Tavily provider),
+deterministically diffs the results against a persistent seen-items state file,
+judges the significance of only the genuinely new items, and writes a cited
+Markdown digest plus a structured JSON changelog to `outputs/`. State advances
+only after the digest is written, so a crashed run re-processes items on the
+next sweep instead of losing them.
 
 The design principle throughout: **the prompt suggests, the scripts
 enforce**. Dedup and domain filtering are deterministic Python — never LLM
@@ -35,7 +35,7 @@ flowchart LR
             subgraph sandbox["OpenShell Sandbox"]
                 direction TB
 
-                scheduler["watchtowerd.sh\nin-sandbox scheduler"]
+                cron["OpenClaw Cron Job\nauditable schedule"]
                 agent["OpenClaw Agent\nAGENTS.md identity"]
 
                 subgraph skill["watchtower skill"]
@@ -48,10 +48,10 @@ flowchart LR
                 wl[("watchlists/\n*.yaml")]
                 st[("state/seen.json")]
                 out[("outputs/\ndigest · changelog")]
-                logs[("logs/\nscheduler log")]
+                runs[("Cron Jobs UI\nrun history")]
 
-                scheduler -->|"periodic\nopenclaw agent"| agent
-                scheduler --> logs
+                cron -->|"periodic\nagent message"| agent
+                cron --> runs
 
                 agent -->|"built-in web_search\n(provider: tavily)"| l7
                 agent -->|"script dispatch"| skill
@@ -71,7 +71,7 @@ flowchart LR
     style sandbox fill:#1a237e,stroke:#3949ab,stroke-width:2px,color:#fff
     style skill   fill:#283593,stroke:#5c6bc0,stroke-width:1px,color:#fff
     style agent   fill:#283593,stroke:#5c6bc0,stroke-width:1px,color:#fff
-    style scheduler fill:#283593,stroke:#5c6bc0,stroke-width:1px,color:#fff
+    style cron fill:#283593,stroke:#5c6bc0,stroke-width:1px,color:#fff
     style l7      fill:#e7f0ff,stroke:#2b5fab,stroke-width:2px,color:#111
     style tavily  fill:#7b1fa2,stroke:#9c27b0,stroke-width:2px,color:#fff
     style llm     fill:#1a1a2e,stroke:#76b900,stroke-width:2px,color:#76b900
@@ -101,10 +101,11 @@ Each sweep follows the procedure in
    host is not within the topic's domains (subdomain suffix match). `site:`
    scoping is a suggestion to the search engine; this filter is the
    enforcement.
-4. **Judge** — only the survivors reach the LLM, which rates each item's
-   significance against the topic's `why_it_matters` using the search result
-   content. Noise is logged as skipped with a one-line reason instead of
-   digested.
+4. **Extract + judge** — only the survivors reach the LLM. If the search
+   snippet is not enough, the agent uses `tavily_extract` on those surviving
+   on-domain URLs, then rates significance against the topic's
+   `why_it_matters`. Noise is logged as skipped with a one-line reason instead
+   of digested.
 5. **Write** — the agent writes `outputs/digest-<run-id>.md` (per topic: what
    changed, why it matters, source links — or a short "no changes" digest)
    and `outputs/changelog-<run-id>.json` (array of
@@ -144,7 +145,7 @@ cd nemoclaw-community/examples/watchtower
 cp .env.example .env      # then edit: TAVILY_API_KEY + inference credentials
 bash scripts/onboard.sh   # non-interactive `nemoclaw onboard`, Tavily web search
 bash scripts/install.sh   # push skill, watchlists, AGENTS.md into the sandbox
-bash scripts/start.sh     # start the in-sandbox scheduler (runs now, then daily)
+bash scripts/start.sh     # create the auditable OpenClaw Cron Job
 ```
 
 `scripts/onboard.sh` scripts *through* `nemoclaw onboard --non-interactive`:
@@ -157,9 +158,7 @@ idempotent — if the sandbox already exists it prints its status and exits.
 
 `scripts/install.sh` uses `openshell sandbox upload` to place the skill at
 `/sandbox/.openclaw/skills/watchtower/`, the watchlists and `AGENTS.md` in
-the agent workspace, installs the in-sandbox scheduler at
-`$WORKSPACE/bin/watchtowerd.sh`, and creates `state/`, `outputs/`, `logs/`,
-and `run/` directories.
+the agent workspace, and creates empty `state/` and `outputs/` directories.
 Override the workspace for named agents with
 `WORKSPACE=/sandbox/.openclaw/workspace-main`, and the sandbox name with
 `NEMOCLAW_SANDBOX_NAME` (default `watchtower`).
@@ -176,19 +175,14 @@ nemoclaw onboard --non-interactive
 
 openshell sandbox exec --name watchtower -- mkdir -p \
   /sandbox/.openclaw/skills/watchtower /sandbox/.openclaw/workspace/watchlists \
-  /sandbox/.openclaw/workspace/bin /sandbox/.openclaw/workspace/state \
-  /sandbox/.openclaw/workspace/outputs /sandbox/.openclaw/workspace/logs \
-  /sandbox/.openclaw/workspace/run
+  /sandbox/.openclaw/workspace/state /sandbox/.openclaw/workspace/outputs
 openshell sandbox upload watchtower skills/watchtower/ /sandbox/.openclaw/skills/watchtower/
 openshell sandbox upload watchtower watchlists/ /sandbox/.openclaw/workspace/watchlists/
 openshell sandbox upload watchtower prompts/AGENTS.md /sandbox/.openclaw/workspace/
-openshell sandbox upload watchtower runtime/watchtowerd.sh /sandbox/.openclaw/workspace/bin/
-openshell sandbox exec --name watchtower -- chmod +x /sandbox/.openclaw/workspace/bin/watchtowerd.sh
 openshell sandbox exec --name watchtower -- \
-  env WATCHTOWER_WORKSPACE=/sandbox/.openclaw/workspace \
-      WATCHTOWER_WATCHLIST=watchlists/dev-ecosystem.yaml \
-      WATCHTOWER_INTERVAL_SECONDS=86400 \
-      /sandbox/.openclaw/workspace/bin/watchtowerd.sh start
+  openclaw cron add --name watchtower-dev-ecosystem --agent main \
+    --session isolated --every 24h --no-deliver --timeout-seconds 900 \
+    --message "Run a watchtower sweep of watchlists/dev-ecosystem.yaml."
 ```
 
 `watchlists/dev-ecosystem.yaml` is the default preset used in the demo below;
@@ -241,33 +235,41 @@ workspace) as its first argument, e.g.
 
 ## Scheduling
 
-Start the scheduler inside the sandbox:
+Create an OpenClaw Cron Job:
 
 ```bash
 bash scripts/start.sh
 ```
 
-By default this runs one sweep immediately, then repeats every 24 hours. The
-scheduler process, its PID file, lock directory, and logs live in the sandbox
-workspace; the host scripts only start, stop, and inspect it:
+By default this creates a `watchtower-dev-ecosystem` job that runs every 24
+hours. The schedule and run history are visible in the OpenClaw dashboard's
+**Cron Jobs** page; the host scripts are only convenience wrappers:
 
 ```bash
-bash scripts/status.sh
-bash scripts/stop.sh
+bash scripts/status.sh   # cron scheduler status, jobs, recent runs, latest outputs
+bash scripts/stop.sh     # remove Watchtower cron jobs
 ```
 
 Use another watchlist or interval with arguments:
 
 ```bash
-bash scripts/start.sh watchlists/regulatory.yaml 43200  # every 12 hours
+bash scripts/start.sh watchlists/regulatory.yaml 5m
+```
+
+Integer intervals are accepted for convenience and converted to OpenClaw
+durations, so `300` becomes `5m`:
+
+```bash
+bash scripts/start.sh watchlists/regulatory.yaml 300
 ```
 
 Or set the same defaults in `.env`:
 
 ```env
 WATCHTOWER_WATCHLIST=watchlists/dev-ecosystem.yaml
-WATCHTOWER_INTERVAL_SECONDS=86400
-WATCHTOWER_RUN_ON_START=1
+WATCHTOWER_EVERY=24h
+WATCHTOWER_TIMEOUT_SECONDS=900
+WATCHTOWER_JOB_NAME=watchtower-dev-ecosystem
 ```
 
 Because state only advances after a digest is written, a run that fails
