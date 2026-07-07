@@ -23,6 +23,7 @@ The table below lists examples maintained in this repository. Additional NemoCla
 | Hermes Brev Launchable | Provides a notebook path from a fresh Brev CPU instance to a working NemoClaw-managed Hermes sandbox, including installation, onboarding, API verification, and terminal access. | [Guide](examples/hermes-launchable/README.md) |
 | Harness Engineering Playground | A CLI dev tool (not an OpenShell blueprint) for automated, eval-driven harness profile improvement, with pluggable target-framework adapters and optimization techniques. | [Guide](examples/harness-engineering-playground/README.md) |
 | Retail Assistant | Deploys a Telegram-based retail management assistant that maps users to store roles, queries retail data through a FastAPI service, and runs the agent inside an OpenShell sandbox. | [Guide](examples/retail-assistant/README.md) |
+| Watchtower | Runs a scheduled web-surveillance agent that sweeps watchlist topics with site-scoped Tavily web searches, deterministically diffs results against persistent seen-items state, and writes cited digests and JSON changelogs from an OpenShell sandbox whose only research egress is api.tavily.com. | [Guide](examples/watchtower/README.md) |
 
 ## Getting Started
 
