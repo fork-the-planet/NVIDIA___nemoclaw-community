@@ -154,7 +154,7 @@ def main() -> int:
     parser.add_argument(
         "watchlist",
         type=Path,
-        help="Path to a watchlist YAML file (e.g. watchlists/dev-ecosystem.yaml)",
+        help="Path to a watchlist YAML file (e.g. watchlists/regulatory.yaml)",
     )
     args = parser.parse_args()
 

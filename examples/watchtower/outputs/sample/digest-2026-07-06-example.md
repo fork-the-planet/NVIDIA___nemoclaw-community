@@ -2,39 +2,34 @@
 
 > **Sample output.** This file is a checked-in example of what a sweep
 > produces; the items below illustrate format, not current facts. A real run
-> writes `outputs/digest-<run-id>.md` with items found by `web_search` at
-> sweep time.
+> writes `outputs/digest-<run-id>.md` with items found by `web_search` and,
+> when needed, `tavily_extract` at sweep time.
 
-Watchlist: `dev-ecosystem` · Topics swept: 4 · New items digested: 2 · Skipped as noise: 1
+Watchlist: `regulatory` · Topics swept: 3 · New items digested: 2 · Skipped as noise: 1
 
-## nemotron-releases
+## pfas-restriction-updates
 
-**New Nemotron Nano model card published on Hugging Face** — significance: high
+**PFAS restriction proposal consultation material updated** — significance: medium
 
-A new Nemotron Nano variant appeared under the NVIDIA organization on Hugging
-Face with updated benchmark results in the model card. Relevant because the
-watchlist tracks new model drops for NemoClaw users, and a new size class
-changes what fits on smaller deployment targets.
+A regulator-hosted PFAS restriction page was returned with updated consultation
+material and committee-process references. Relevant because changes to PFAS
+restriction proposals can affect materials, chemicals, and product compliance
+planning.
 
-- Source: <https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2>
+- Source: <https://echa.europa.eu/hot-topics/perfluoroalkyl-chemicals-pfas>
 
-## cuda-toolkit-releases
+## ofac-sanctions-designations
 
-**CUDA Toolkit 13.0 release notes published** — significance: medium
+**New OFAC recent-action notice references sanctions list changes** — significance: high
 
-The CUDA Toolkit release notes index now lists a 13.0 entry covering compiler
-updates and deprecated-architecture removals. Relevant because a major-version
-toolkit bump changes build requirements and driver compatibility for GPU
-workloads.
+A recent OFAC action page described new designation activity and related list
+updates. Relevant because new designations can immediately affect screening
+obligations and permissible counterparties.
 
-- Source: <https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html>
+- Source: <https://ofac.treasury.gov/recent-actions/20260611>
 
-## pytorch-releases
+## fda-device-recalls
 
-No new items. One result was skipped as noise: a release page already
-recorded in state under the same URL family (patch-note reissue, no new
-content in the snippet).
-
-## vllm-releases
-
-No new items this run.
+No new items. One result was skipped as noise: an evergreen explainer page about
+what a recall is, with no new recall notice or product-specific action in the
+search result content.

@@ -1,16 +1,16 @@
 [
   {
-    "topic_id": "nemotron-releases",
-    "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2",
-    "title": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
-    "significance": "high",
-    "summary": "New Nemotron Nano variant published under the NVIDIA organization on Hugging Face with updated model-card benchmarks; a new size class changes what fits on smaller deployment targets."
+    "topic_id": "pfas-restriction-updates",
+    "url": "https://echa.europa.eu/hot-topics/perfluoroalkyl-chemicals-pfas",
+    "title": "PFAS restriction proposal consultation material updated",
+    "significance": "medium",
+    "summary": "Regulator-hosted PFAS restriction material was returned with updated consultation and committee-process references; relevant to materials and product compliance planning."
   },
   {
-    "topic_id": "cuda-toolkit-releases",
-    "url": "https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html",
-    "title": "CUDA Toolkit 13.0 Release Notes",
-    "significance": "medium",
-    "summary": "Release notes index now lists a CUDA Toolkit 13.0 entry covering compiler updates and deprecated-architecture removals; a major-version bump changes build requirements and driver compatibility."
+    "topic_id": "ofac-sanctions-designations",
+    "url": "https://ofac.treasury.gov/recent-actions/20260611",
+    "title": "New OFAC recent-action notice references sanctions list changes",
+    "significance": "high",
+    "summary": "Recent OFAC action described designation activity and sanctions list changes that can immediately affect screening obligations and permissible counterparties."
   }
 ]

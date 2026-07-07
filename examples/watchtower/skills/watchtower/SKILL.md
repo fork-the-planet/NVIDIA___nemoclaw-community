@@ -43,7 +43,7 @@ committed to state.
 ### 1. Validate the active watchlist
 
 ```bash
-python3 ~/.openclaw/skills/watchtower/scripts/validate_watchlist.py watchlists/dev-ecosystem.yaml
+python3 ~/.openclaw/skills/watchtower/scripts/validate_watchlist.py watchlists/regulatory.yaml
 ```
 
 If validation fails, stop and report the error. Do not sweep an invalid
@@ -64,8 +64,8 @@ Use optional fields as hints:
 Example query pair:
 
 ```text
-new Nemotron model release announcement past 14 days
-new Nemotron model release announcement site:huggingface.co OR site:developer.nvidia.com
+new sanctions designation specially designated nationals list update past 14 days
+new sanctions designation specially designated nationals list update site:ofac.treasury.gov
 ```
 
 ### 3. Collect candidates and filter deterministically
@@ -76,7 +76,7 @@ batch through `diff_state.py`:
 
 ```bash
 <candidates.jsonl python3 ~/.openclaw/skills/watchtower/scripts/diff_state.py \
-  --watchlist watchlists/dev-ecosystem.yaml \
+  --watchlist watchlists/regulatory.yaml \
   --state state/seen.json >survivors.jsonl
 ```
 

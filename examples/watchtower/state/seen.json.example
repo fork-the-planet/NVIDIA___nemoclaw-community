@@ -2,33 +2,21 @@
   "items": [
     {
       "first_seen_run": "2026-06-15-a1b2",
-      "title": "PyTorch 2.7.0 Release",
-      "topic_id": "pytorch-releases",
-      "url": "https://github.com/pytorch/pytorch/releases/tag/v2.7.0"
+      "title": "PFAS restriction proposal consultation update",
+      "topic_id": "pfas-restriction-updates",
+      "url": "https://echa.europa.eu/hot-topics/perfluoroalkyl-chemicals-pfas"
     },
     {
       "first_seen_run": "2026-06-15-a1b2",
-      "title": "PyTorch 2.7.1 Release",
-      "topic_id": "pytorch-releases",
-      "url": "https://github.com/pytorch/pytorch/releases/tag/v2.7.1"
-    },
-    {
-      "first_seen_run": "2026-06-15-a1b2",
-      "title": "CUDA Toolkit 12.8 Release Notes",
-      "topic_id": "cuda-toolkit-releases",
-      "url": "https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/index.html"
+      "title": "OFAC Recent Actions archive",
+      "topic_id": "ofac-sanctions-designations",
+      "url": "https://ofac.treasury.gov/recent-actions"
     },
     {
       "first_seen_run": "2026-06-22-c3d4",
-      "title": "nvidia/Llama-3.1-Nemotron-Ultra-253B-v1",
-      "topic_id": "nemotron-releases",
-      "url": "https://huggingface.co/nvidia/Llama-3.1-Nemotron-Ultra-253B-v1"
-    },
-    {
-      "first_seen_run": "2026-06-22-c3d4",
-      "title": "vLLM v0.8.5 Release",
-      "topic_id": "vllm-releases",
-      "url": "https://github.com/vllm-project/vllm/releases/tag/v0.8.5"
+      "title": "Medical Device Recalls and Early Alerts",
+      "topic_id": "fda-device-recalls",
+      "url": "https://www.fda.gov/medical-devices/medical-device-safety/medical-device-recalls-and-early-alerts"
     }
   ]
 }

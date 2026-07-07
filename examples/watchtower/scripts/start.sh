@@ -10,7 +10,7 @@
 #   bash scripts/start.sh [watchlist-path] [every]
 #
 # Examples:
-#   bash scripts/start.sh watchlists/dev-ecosystem.yaml 24h
+#   bash scripts/start.sh watchlists/regulatory.yaml 24h
 #   bash scripts/start.sh watchlists/regulatory.yaml 5m
 #   bash scripts/start.sh watchlists/regulatory.yaml 300   # converted to 5m
 
@@ -23,7 +23,7 @@ command -v openshell >/dev/null || { echo "openshell not in PATH — run scripts
 
 WORKSPACE="${WORKSPACE:-/sandbox/.openclaw/workspace}"
 
-WATCHLIST="${1:-${WATCHTOWER_WATCHLIST:-watchlists/dev-ecosystem.yaml}}"
+WATCHLIST="${1:-${WATCHTOWER_WATCHLIST:-watchlists/regulatory.yaml}}"
 EVERY_RAW="${2:-${WATCHTOWER_EVERY:-24h}}"
 TIMEOUT_SECONDS="${WATCHTOWER_TIMEOUT_SECONDS:-900}"
 

@@ -180,14 +180,13 @@ openshell sandbox upload watchtower skills/watchtower/ /sandbox/.openclaw/skills
 openshell sandbox upload watchtower watchlists/ /sandbox/.openclaw/workspace/watchlists/
 openshell sandbox upload watchtower prompts/AGENTS.md /sandbox/.openclaw/workspace/
 openshell sandbox exec --name watchtower -- \
-  openclaw cron add --name watchtower-dev-ecosystem --agent main \
+  openclaw cron add --name watchtower-regulatory --agent main \
     --session isolated --every 24h --no-deliver --timeout-seconds 900 \
-    --message "Run a watchtower sweep of watchlists/dev-ecosystem.yaml."
+    --message "Run a watchtower sweep of watchlists/regulatory.yaml."
 ```
 
-`watchlists/dev-ecosystem.yaml` is the default preset used in the demo below;
-`watchlists/regulatory.yaml` is a second preset you can swap in (see
-[Watchlists](#watchlists)).
+`watchlists/regulatory.yaml` is the default preset used in the demo below;
+additional presets are listed in [Watchlists](#watchlists).
 
 ## Running one sweep
 
@@ -216,7 +215,7 @@ deterministic script output, not the LLM remembering.
 
 **3. Restore the example state → realistic incremental digest.** Replace the
 state file with the checked-in fixture, which is pre-seeded with a handful of
-already-seen items for the dev-ecosystem topics:
+already-seen items for the regulatory topics:
 
 ```bash
 openshell sandbox upload watchtower state/seen.json.example /sandbox/.openclaw/workspace/state/
@@ -241,7 +240,7 @@ Create an OpenClaw Cron Job:
 bash scripts/start.sh
 ```
 
-By default this creates a `watchtower-dev-ecosystem` job that runs every 24
+By default this creates a `watchtower-regulatory` job that runs every 24
 hours. The schedule and run history are visible in the OpenClaw dashboard's
 **Cron Jobs** page; the host scripts are only convenience wrappers:
 
@@ -266,10 +265,10 @@ bash scripts/start.sh watchlists/regulatory.yaml 300
 Or set the same defaults in `.env`:
 
 ```env
-WATCHTOWER_WATCHLIST=watchlists/dev-ecosystem.yaml
+WATCHTOWER_WATCHLIST=watchlists/regulatory.yaml
 WATCHTOWER_EVERY=24h
 WATCHTOWER_TIMEOUT_SECONDS=900
-WATCHTOWER_JOB_NAME=watchtower-dev-ecosystem
+WATCHTOWER_JOB_NAME=watchtower-regulatory
 ```
 
 Because state only advances after a digest is written, a run that fails
@@ -284,14 +283,14 @@ topics. Each topic has required intent fields plus optional search hints and
 negative filters:
 
 ```yaml
-watchlist: dev-ecosystem
+watchlist: regulatory
 topics:
-  - id: nemotron-releases
-    query: "new Nemotron model release announcement"
-    seed_sources: [huggingface.co, developer.nvidia.com]
+  - id: ofac-sanctions-designations
+    query: "new sanctions designation specially designated nationals list update"
+    seed_sources: [ofac.treasury.gov]
     exclude_domains: [wikipedia.org]
     lookback_days: 14
-    why_it_matters: "Track new model drops relevant to NemoClaw users"
+    why_it_matters: "New OFAC designations can immediately affect screening obligations and permissible counterparties"
 ```
 
 Per topic:
@@ -306,10 +305,16 @@ Per topic:
 | `why_it_matters` | The significance yardstick the LLM judges new items against, and the "why it matters" line in digests. |
 
 To edit, change the YAML and re-run — `validate_watchlist.py` runs at the
-start of every sweep and fails fast on schema violations. To monitor a
-different topic set, swap the preset:
-[`watchlists/regulatory.yaml`](watchlists/regulatory.yaml) tracks EU PFAS
-restriction updates, OFAC sanctions designations, and FDA device recalls.
+start of every sweep and fails fast on schema violations. Included presets:
+
+- [`watchlists/regulatory.yaml`](watchlists/regulatory.yaml) — EU PFAS
+  restriction updates, OFAC sanctions designations, and FDA device recalls.
+- [`watchlists/security-advisories.yaml`](watchlists/security-advisories.yaml)
+  — actively exploited vulnerabilities, cloud-native advisories, and
+  open-source supply-chain attacks.
+- [`watchlists/ai-policy.yaml`](watchlists/ai-policy.yaml) — AI regulatory
+  enforcement, model-safety standards, and copyright litigation.
+
 Presets share one state file safely — state items are keyed by topic id and
 URL — but if you want independent sweep histories, point each preset's runs at
 its own `--state` path.

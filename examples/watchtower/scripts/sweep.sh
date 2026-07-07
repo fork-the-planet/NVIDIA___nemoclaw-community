@@ -10,7 +10,7 @@
 #   bash scripts/sweep.sh [watchlist-path]
 #
 # The watchlist path is relative to the agent workspace inside the sandbox
-# (default: watchlists/dev-ecosystem.yaml). Override the sandbox with
+# (default: watchlists/regulatory.yaml). Override the sandbox with
 # NEMOCLAW_SANDBOX_NAME (default: watchtower).
 
 set -euo pipefail
@@ -20,7 +20,7 @@ source "$DIR/_lib.sh"
 
 command -v openshell >/dev/null || { echo "openshell not in PATH — run scripts/onboard.sh first" >&2; exit 1; }
 
-WATCHLIST="${1:-${WATCHTOWER_WATCHLIST:-watchlists/dev-ecosystem.yaml}}"
+WATCHLIST="${1:-${WATCHTOWER_WATCHLIST:-watchlists/regulatory.yaml}}"
 
 echo "Sweeping $WATCHLIST in sandbox '$NEMOCLAW_SANDBOX_NAME'"
 # No --local: NemoClaw sandboxes reject it (it would bypass the gateway's
