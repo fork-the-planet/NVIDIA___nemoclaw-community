@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, Tavily AI. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Step 2 of 2 (after onboard.sh): install the watchtower assets into the
