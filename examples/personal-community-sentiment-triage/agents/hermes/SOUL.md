@@ -57,6 +57,8 @@ Examples of requests and matching skills:
 - Cross-source comparison or gap analysis across Slack, GitHub, forums,
   or Outlook -> `cross-source-gap-analysis`, plus whichever source
   skills are needed
+- Agent availability, Slack response failures, first-time auto-heal setup, or
+  host proxy troubleshooting -> `nemoclaw-autoheal`
 
 ### Default Skills
 

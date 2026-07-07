@@ -11,34 +11,38 @@
 # so Docker treats them as global build args (multi-stage scoping rule).
 ARG BASE_IMAGE=ghcr.io/nvidia/nemoclaw/hermes-sandbox-base@sha256:f76a2ed0509570b1ce5380327c7ebe2e120e97f524e9271e145d2ea34c83ba5e
 
-# ── Stage 0: binstall the pinned, prebuilt nemo-relay CLI (no source build) ────
+# ── Stage 0: fetch the pinned, prebuilt nemo-relay CLI (no source build) ──────
 # Upstream publishes musl-static CLI release assets (zero glibc linkage), so the
-# binary loads on the glibc-2.35 runtime regardless of build host — no in-base-
-# image compile needed. cargo-binstall auto-detects host arch + libc and resolves
-# the matching release asset, so no architecture is named here; the build is
-# always native (openshell builds with no --platform), so host arch == target.
+# binary loads on the glibc-2.35 runtime regardless of build host. The image
+# selects the native Docker architecture explicitly and downloads its release.
 # 0.3.0 includes the S3 ATIF export plugin (NVIDIA/NeMo-Relay#163), pulled in
 # unconditionally via the cli crate's `object-store` feature.
 FROM ${BASE_IMAGE} AS nemo-relay-builder
 ARG NEMO_RELAY_CLI_VERSION=0.3.0
-# PATH includes cargo's bin dir so the install script's --self-install step
-# finds it (silences its cosmetic "path is missing /root/.cargo/bin" warning)
-# and cargo-binstall resolves by name on the next line.
+# If the caller provides a github_token BuildKit secret, use it for the release
+# asset request to avoid anonymous GitHub rate limits on shared egress IPs. The
+# token is not an ARG/ENV and does not persist into the final image.
 RUN --mount=type=secret,id=github_token,required=false \
-    export PATH="/root/.cargo/bin:$PATH" \
+    mkdir -p /out/bin \
     && apt-get update -qq \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -L --proto '=https' --tlsv1.2 -sSf \
-       https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
+    && ARCH="$(uname -m)" \
+    && case "$ARCH" in \
+         x86_64) TARGET=x86_64-unknown-linux-musl ;; \
+         aarch64) TARGET=aarch64-unknown-linux-musl ;; \
+         *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
+       esac \
+    && RELEASE_URL="https://github.com/NVIDIA/NeMo-Relay/releases/download/${NEMO_RELAY_CLI_VERSION}/nemo-relay-cli-${TARGET}-${NEMO_RELAY_CLI_VERSION}" \
     && if [ -s /run/secrets/github_token ]; then \
-         export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
+         curl -L --proto '=https' --tlsv1.2 -sSf \
+           -H "Authorization: Bearer $(cat /run/secrets/github_token)" \
+           "$RELEASE_URL" -o /out/bin/nemo-relay; \
+       else \
+         curl -L --proto '=https' --tlsv1.2 -sSf "$RELEASE_URL" -o /out/bin/nemo-relay; \
        fi \
-    && cargo-binstall --no-confirm --strategies crate-meta-data \
-       --install-path /out/bin "nemo-relay-cli@${NEMO_RELAY_CLI_VERSION}"
-# --strategies crate-meta-data: only resolve the crate's own [metadata.binstall]
-# release asset; fail loud (no silent source recompile) if none matches the host.
-# Produces /out/bin/nemo-relay (musl-static; runs on any glibc/musl Linux)
+    && chmod 755 /out/bin/nemo-relay
+# Produces /out/bin/nemo-relay (musl-static; runs on any glibc/musl Linux).
 
 # ── Main sandbox image ────────────────────────────────────────────────────────
 FROM ${BASE_IMAGE}

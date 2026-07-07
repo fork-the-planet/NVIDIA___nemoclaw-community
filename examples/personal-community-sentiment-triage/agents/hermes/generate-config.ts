@@ -105,7 +105,7 @@ function main(): void {
       },
     },
     approvals: {
-      mode: "smart",
+      mode: "off",
       timeout: 60,
     },
     // NeMo-Relay shell hooks — each event spawns `nemo-relay hook-forward hermes`,
