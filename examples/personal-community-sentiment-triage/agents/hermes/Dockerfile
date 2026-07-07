@@ -19,7 +19,11 @@ ARG BASE_IMAGE=ghcr.io/nvidia/nemoclaw/hermes-sandbox-base@sha256:f76a2ed0509570
 # unconditionally via the cli crate's `object-store` feature.
 FROM ${BASE_IMAGE} AS nemo-relay-builder
 ARG NEMO_RELAY_CLI_VERSION=0.3.0
-RUN mkdir -p /out/bin \
+# If the caller provides a github_token BuildKit secret, use it for the release
+# asset request to avoid anonymous GitHub rate limits on shared egress IPs. The
+# token is not an ARG/ENV and does not persist into the final image.
+RUN --mount=type=secret,id=github_token,required=false \
+    mkdir -p /out/bin \
     && apt-get update -qq \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
@@ -29,9 +33,14 @@ RUN mkdir -p /out/bin \
          aarch64) TARGET=aarch64-unknown-linux-musl ;; \
          *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
        esac \
-    && curl -L --proto '=https' --tlsv1.2 -sSf \
-       "https://github.com/NVIDIA/NeMo-Relay/releases/download/${NEMO_RELAY_CLI_VERSION}/nemo-relay-cli-${TARGET}-${NEMO_RELAY_CLI_VERSION}" \
-       -o /out/bin/nemo-relay \
+    && RELEASE_URL="https://github.com/NVIDIA/NeMo-Relay/releases/download/${NEMO_RELAY_CLI_VERSION}/nemo-relay-cli-${TARGET}-${NEMO_RELAY_CLI_VERSION}" \
+    && if [ -s /run/secrets/github_token ]; then \
+         curl -L --proto '=https' --tlsv1.2 -sSf \
+           -H "Authorization: Bearer $(cat /run/secrets/github_token)" \
+           "$RELEASE_URL" -o /out/bin/nemo-relay; \
+       else \
+         curl -L --proto '=https' --tlsv1.2 -sSf "$RELEASE_URL" -o /out/bin/nemo-relay; \
+       fi \
     && chmod 755 /out/bin/nemo-relay
 # Produces /out/bin/nemo-relay (musl-static; runs on any glibc/musl Linux).
 

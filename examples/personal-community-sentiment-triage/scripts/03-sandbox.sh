@@ -103,21 +103,33 @@ for arg in "${!DOCKERFILE_ARGS[@]}"; do
 done
 
 BUILD_FROM="$STAGED_DOCKERFILE"
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+# BuildKit-only Dockerfile features, such as secret mounts, must be built by
+# Docker before handing the result to OpenShell. OpenShell accepts an image ref
+# in --from, so this preserves the normal sandbox-create flow while ensuring
+# token-backed GitHub release downloads work when GITHUB_TOKEN is supplied.
+if [[ -n "${GITHUB_TOKEN:-}" ]] || grep -q -- "--mount=type=secret" "$STAGED_DOCKERFILE"; then
   command -v docker >/dev/null || {
-    echo "docker not in PATH; required for authenticated sandbox image build" >&2
+    echo "docker not in PATH; required for BuildKit sandbox image build" >&2
     exit 1
   }
   safe_sandbox_name="$(printf '%s' "$SANDBOX_NAME" \
     | tr '[:upper:]' '[:lower:]' \
     | tr -c 'a-z0-9_.-' '-')"
   BUILD_FROM="nemoclaw-hermes-sandbox:${safe_sandbox_name}-${DOCKERFILE_ARGS[NEMOCLAW_BUILD_ID]}"
-  echo "Building sandbox image $BUILD_FROM with BuildKit secret-backed GitHub authentication"
-  DOCKER_BUILDKIT=1 GITHUB_TOKEN="$GITHUB_TOKEN" docker build \
-    --secret id=github_token,env=GITHUB_TOKEN \
-    -t "$BUILD_FROM" \
-    -f "$STAGED_DOCKERFILE" \
-    "$EXAMPLE_DIR"
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    echo "Building sandbox image $BUILD_FROM with BuildKit secret-backed GitHub authentication"
+    DOCKER_BUILDKIT=1 GITHUB_TOKEN="$GITHUB_TOKEN" docker build \
+      --secret id=github_token,env=GITHUB_TOKEN \
+      -t "$BUILD_FROM" \
+      -f "$STAGED_DOCKERFILE" \
+      "$EXAMPLE_DIR"
+  else
+    echo "Building sandbox image $BUILD_FROM with BuildKit"
+    DOCKER_BUILDKIT=1 docker build \
+      -t "$BUILD_FROM" \
+      -f "$STAGED_DOCKERFILE" \
+      "$EXAMPLE_DIR"
+  fi
 fi
 
 # ── Stage policy and patch per-run repo scope ───────────────────────────
