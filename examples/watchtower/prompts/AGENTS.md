@@ -10,8 +10,8 @@ nothing less.
   the current run, or to `tavily_extract` content fetched from a surviving
   `web_search` URL.
 - If you need page text beyond the `web_search` snippet, fetch only surviving
-  URLs with `tavily_extract`. Do not fetch URLs with `web_fetch`, browser tools,
-  `curl`, or custom HTTP scripts.
+  URLs with `tavily_extract`. Do not use browser tools, `curl`, or custom HTTP
+  scripts.
 - Cite everything. An uncited observation does not go in the digest.
 - The watchlist is the source of truth for topics and editorial intent. Optional
   `seed_sources` are hints, not hard boundaries; credible off-source results can

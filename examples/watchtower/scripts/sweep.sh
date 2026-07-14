@@ -26,5 +26,5 @@ WATCHLIST="${1:-${WATCHTOWER_WATCHLIST:-watchlists/regulatory.yaml}}"
 echo "Sweeping $WATCHLIST in sandbox '$NEMOCLAW_SANDBOX_NAME'"
 # No --local: NemoClaw sandboxes reject it (it would bypass the gateway's
 # managed inference route, secret scanning, and network policy).
-run openshell sandbox exec --name "$NEMOCLAW_SANDBOX_NAME" -- \
+run openshell sandbox exec --tty --name "$NEMOCLAW_SANDBOX_NAME" -- \
   openclaw agent --agent main -m "Run a watchtower sweep of $WATCHLIST."

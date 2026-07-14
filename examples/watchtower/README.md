@@ -55,8 +55,9 @@ afterward.
 
 - Docker and NemoClaw installed.
 - `TAVILY_API_KEY` from <https://app.tavily.com>.
-- Inference credentials supported by NemoClaw, for example
-  `NVIDIA_INFERENCE_API_KEY` from <https://build.nvidia.com>.
+- A Nebius Token Factory API key from <https://tokenfactory.nebius.com/> for
+  the default Nemotron 3 Ultra configuration, or credentials for another
+  inference provider supported by NemoClaw.
 
 See [`.env.example`](.env.example) for the exact variables.
 
@@ -173,6 +174,7 @@ WATCHTOWER_JOB_NAME=watchtower-regulatory
 
 ```text
 watchlists/*.yaml                    # monitored topics
+agents.yaml                          # main-agent tool policy
 prompts/AGENTS.md                    # agent behavior rules
 skills/watchtower/SKILL.md           # sweep procedure
 skills/watchtower/scripts/*.py       # validation, diff, and state commit helpers
@@ -189,6 +191,8 @@ bash scripts/sweep.sh watchlists/your-watchlist.yaml
 
 - Tavily is the research path: search uses `web_search`; page extraction uses
   `tavily_extract`.
+- [`agents.yaml`](agents.yaml) explicitly denies `web_fetch`; Tavily extraction
+  remains available through `tavily_extract`.
 - The Tavily key is stored by NemoClaw/OpenShell provider plumbing, not written
   into the watchlist or skill files.
 - Dedup and `exclude_domains` are deterministic script checks, not model memory.

@@ -6,9 +6,10 @@
 # Step 1 of 2: non-interactively onboard an OpenClaw sandbox with Tavily as
 # the web-search provider. Scripts THROUGH `nemoclaw onboard`, not around it:
 # this script only validates .env, exports the documented non-interactive
-# answer variables, and hands off to the wizard. Onboarding wires the
-# built-in web_search tool to Tavily, stores the key as an OpenShell provider
-# placeholder, and applies the Tavily egress policy — nothing else needed.
+# answer variables, and hands off to the wizard with the checked-in agent
+# manifest. Onboarding wires the built-in web_search and tavily_extract tools
+# to Tavily, stores the key as an OpenShell provider placeholder, applies the
+# Tavily egress policy, and bakes in the explicit web_fetch denial.
 #
 # Idempotent: if the sandbox already exists, prints its status and exits 0.
 #
@@ -60,7 +61,7 @@ if sandbox_exists "$NEMOCLAW_SANDBOX_NAME"; then
 fi
 
 echo "Onboarding sandbox '$NEMOCLAW_SANDBOX_NAME' (provider: $NEMOCLAW_PROVIDER, web search: tavily)"
-run nemoclaw onboard --non-interactive
+run nemoclaw onboard --non-interactive --agents "$EXAMPLE_DIR/agents.yaml"
 
 echo
 echo "Onboard complete. Next: bash scripts/install.sh"
