@@ -36,12 +36,20 @@ cd nemoclaw-community/examples/watchtower
 cp .env.example .env      # add TAVILY_API_KEY + inference credentials
 bash scripts/onboard.sh   # create/configure the NemoClaw sandbox
 bash scripts/install.sh   # upload the skill, watchlists, and prompt
-bash scripts/start.sh     # create the OpenClaw Cron Job
+bash scripts/start.sh     # request creation of the OpenClaw Cron Job
 ```
 
 By default, `scripts/start.sh` creates a `watchtower-regulatory` job that runs
 once every 24 hours. The schedule and run history are visible in the OpenClaw
 Dashboard under **Cron Jobs**.
+
+Creating or removing a Cron Job requires the `operator.admin` scope. NemoClaw
+does not approve that scope automatically. On a fresh sandbox, the first
+`scripts/start.sh` attempt prints the pending request and exits. Follow its
+instructions to inspect and approve that exact request from
+`nemoclaw watchtower connect`, then rerun `scripts/start.sh`. The approval is
+stored for the paired CLI device, so normal status and lifecycle commands work
+afterward.
 
 ## Requirements
 
@@ -66,7 +74,7 @@ Run a different watchlist once:
 bash scripts/sweep.sh watchlists/ai-policy.yaml
 ```
 
-Create or replace a scheduled job:
+Create a scheduled job:
 
 ```bash
 bash scripts/start.sh watchlists/regulatory.yaml 24h
@@ -147,9 +155,10 @@ stable.
 ## How scheduling works
 
 Watchtower uses OpenClaw-native Cron Jobs, not host cron and not a hidden
-background loop. `scripts/start.sh` is only a convenience wrapper around the
-OpenClaw cron API; after creation, the job is visible and auditable in the
-Dashboard.
+background loop. `scripts/start.sh` invokes the supported, paired `openclaw
+cron add` CLI. It never claims or auto-approves administrative scopes. After
+you explicitly approve the CLI device's exact `operator.admin` request, the
+job is visible and auditable in the Dashboard.
 
 Useful `.env` scheduling defaults:
 

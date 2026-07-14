@@ -10,8 +10,7 @@
 #   skills/watchtower/  -> /sandbox/.openclaw/skills/watchtower/  (skill discovery dir)
 #   watchlists/         -> $WORKSPACE/watchlists/
 #   prompts/AGENTS.md   -> $WORKSPACE/AGENTS.md
-#   runtime/openclaw-cron-rpc.mjs -> $WORKSPACE/bin/ (Cron Jobs helper)
-#   state/, outputs/       created under $WORKSPACE
+#   state/, outputs/     created under $WORKSPACE
 #
 # WORKSPACE defaults to the single-agent workspace path; override for named
 # agents (e.g. WORKSPACE=/sandbox/.openclaw/workspace-main).
@@ -40,16 +39,13 @@ fi
 echo "Installing watchtower assets into sandbox '$NEMOCLAW_SANDBOX_NAME' (workspace: $WORKSPACE)"
 
 run openshell sandbox exec --name "$NEMOCLAW_SANDBOX_NAME" -- \
-  mkdir -p "$SKILLS_DIR" "$WORKSPACE/bin" "$WORKSPACE/state" "$WORKSPACE/outputs"
+  mkdir -p "$SKILLS_DIR" "$WORKSPACE/state" "$WORKSPACE/outputs"
 
 # `openshell sandbox upload` copies the source directory INTO the
 # destination (cp semantics), so upload to the parent directory.
 run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/skills/watchtower" "$SKILLS_DIR/"
 run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/watchlists" "$WORKSPACE/"
 run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/prompts/AGENTS.md" "$WORKSPACE/"
-run openshell sandbox upload "$NEMOCLAW_SANDBOX_NAME" "$EXAMPLE_DIR/runtime/openclaw-cron-rpc.mjs" "$WORKSPACE/bin/"
-run openshell sandbox exec --name "$NEMOCLAW_SANDBOX_NAME" -- chmod +x "$WORKSPACE/bin/openclaw-cron-rpc.mjs"
-
 echo
 echo "Installed. Run once with: bash scripts/sweep.sh"
 echo "Start the OpenClaw Cron Job with: bash scripts/start.sh"
