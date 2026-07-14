@@ -53,7 +53,7 @@ format_every() {
 
 JOB_NAME="${WATCHTOWER_JOB_NAME:-watchtower-$(slugify "$WATCHLIST")}"
 EVERY="$(format_every "$EVERY_RAW")"
-MESSAGE="Run a watchtower sweep of $WATCHLIST."
+MESSAGE="Read /sandbox/.openclaw/skills/watchtower/SKILL.md, then follow its Procedure and Completion gate exactly to run a watchtower sweep of $WATCHLIST from /sandbox/.openclaw/workspace. Complete all six steps, verify the digest, changelog, and state files, and only then reply with a short completion summary—not the digest body."
 
 if ! sandbox_exists "$NEMOCLAW_SANDBOX_NAME"; then
   echo "Sandbox '$NEMOCLAW_SANDBOX_NAME' not found — run scripts/onboard.sh first" >&2

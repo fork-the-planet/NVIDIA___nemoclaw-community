@@ -32,6 +32,14 @@ Hard rules:
   tools, `curl`, or custom HTTP scripts.
 - Never advance state before both output files are written.
 
+## Workspace root
+
+Treat `/sandbox/.openclaw/workspace` as the run root. Resolve the supplied
+watchlist path relative to that directory, and write `state/` and `outputs/`
+directly beneath it. Do not create a nested `workspace/watchtower/` directory.
+Because each `exec` call starts a new shell, use absolute paths or prefix each
+relative-path command with `cd /sandbox/.openclaw/workspace &&`.
+
 ## Run identity
 
 Set a run id at the start of the sweep: UTC date plus a short random suffix,
@@ -43,7 +51,8 @@ committed to state.
 ### 1. Validate the active watchlist
 
 ```bash
-python3 ~/.openclaw/skills/watchtower/scripts/validate_watchlist.py watchlists/regulatory.yaml
+cd /sandbox/.openclaw/workspace && \
+  python3 ~/.openclaw/skills/watchtower/scripts/validate_watchlist.py watchlists/regulatory.yaml
 ```
 
 If validation fails, stop and report the error. Do not sweep an invalid
@@ -75,7 +84,8 @@ any useful search-provided fields such as `snippet` or `content`; then pipe the
 batch through `diff_state.py`:
 
 ```bash
-<candidates.jsonl python3 ~/.openclaw/skills/watchtower/scripts/diff_state.py \
+cd /sandbox/.openclaw/workspace && \
+  <candidates.jsonl python3 ~/.openclaw/skills/watchtower/scripts/diff_state.py \
   --watchlist watchlists/regulatory.yaml \
   --state state/seen.json >survivors.jsonl
 ```
@@ -114,10 +124,20 @@ Write both files before touching state:
 Pipe the digested items (now including `run_id`) to `commit_state.py`:
 
 ```bash
-<confirmed.jsonl python3 ~/.openclaw/skills/watchtower/scripts/commit_state.py --state state/seen.json
+cd /sandbox/.openclaw/workspace && \
+  <confirmed.jsonl python3 ~/.openclaw/skills/watchtower/scripts/commit_state.py --state state/seen.json
 ```
 
 This ordering is the crash-safety contract: if the run dies before step 6,
 state has not advanced and the next sweep re-processes the same candidates
 instead of losing them. A re-processed item is cheap; a silently lost item is
 not.
+
+## Completion gate
+
+Do not paste the digest body into the final chat response. A chat-only digest is
+a failed sweep. Before replying, verify that the current run's digest and
+changelog are non-empty files under `/sandbox/.openclaw/workspace/outputs/` and
+that `/sandbox/.openclaw/workspace/state/seen.json` exists after the commit.
+If any check fails, continue working until all three artifacts pass. The final
+response should only summarize the run id, counts, and verified artifact paths.
