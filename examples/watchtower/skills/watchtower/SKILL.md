@@ -48,11 +48,14 @@ committed to state.
 
 ## Procedure
 
+In the commands below, replace `<watchlist_path>` with the watchlist path
+supplied in the sweep request.
+
 ### 1. Validate the active watchlist
 
 ```bash
 cd /sandbox/.openclaw/workspace && \
-  python3 ~/.openclaw/skills/watchtower/scripts/validate_watchlist.py watchlists/regulatory.yaml
+  python3 ~/.openclaw/skills/watchtower/scripts/validate_watchlist.py "<watchlist_path>"
 ```
 
 If validation fails, stop and report the error. Do not sweep an invalid
@@ -86,7 +89,7 @@ batch through `diff_state.py`:
 ```bash
 cd /sandbox/.openclaw/workspace && \
   <candidates.jsonl python3 ~/.openclaw/skills/watchtower/scripts/diff_state.py \
-  --watchlist watchlists/regulatory.yaml \
+  --watchlist "<watchlist_path>" \
   --state state/seen.json >survivors.jsonl
 ```
 
