@@ -5,6 +5,9 @@ runs as an auditable **OpenClaw Cron Job**, searches the web with Tavily,
 extracts source text when needed, and writes a Markdown digest plus JSON
 changelog.
 
+This community example was contributed by [Tavily](https://tavily.com). For
+questions or support, contact [support@tavily.com](mailto:support@tavily.com).
+
 Use it when you want a sandboxed agent to periodically answer:
 
 > What changed on the topics I care about, and does it matter?
