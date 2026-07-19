@@ -49,7 +49,7 @@ path.
 Hermes invokes the host helper through Blender MCP, runs native OVPhysX, reads
 back 25 authoritative samples for 12 bodies, and renders a Blender replay:
 
-![Native OVPhysX stair-drop replay](docs/assets/ovphysx-stair-drop.gif)
+![Native OVPhysX stair-drop replay with plastic spheres on wooden stairs](docs/assets/wooden-stairs-plastic-sphere-replay.gif)
 
 The validated receipt reports:
 

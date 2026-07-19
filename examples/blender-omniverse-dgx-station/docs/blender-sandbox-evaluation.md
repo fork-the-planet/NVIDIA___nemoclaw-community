@@ -196,5 +196,5 @@ those turns without restoring arbitrary execution.
 - [ ] The source scene remains unchanged and is restored after mutating evals.
 
 The long-form prompts used to exercise Tiers 3–5 are retained in
-`standalone-blender-ovrtx-simready-prompts.md`. They are evaluation inputs, not
-evidence by themselves.
+[`prompts/openusd-ovrtx-ovphysx-evaluation-prompts.md`](../prompts/openusd-ovrtx-ovphysx-evaluation-prompts.md).
+They are evaluation inputs, not evidence by themselves.
