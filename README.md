@@ -19,6 +19,7 @@ The table below lists examples maintained in this repository. Additional NemoCla
 
 | Example | Description | Link |
 | ---- | ----------- | ---- |
+| DGX Station Blender and Omniverse | Runs a local Nemotron 3 Ultra model on DGX Station to control visible Blender through NemoClaw and OpenShell, render with OVRTX, and execute native OVPhysX simulations with either direct Hermes or Codex-coached workflows. | [Guide](examples/blender-omniverse-dgx-station/README.md) |
 | Personal Community Sentiment Triage | Pairs a Hermes harness with an OpenShell sandbox and community-signal integrations across Slack, Outlook, live read-only GitHub REST, GitHub discussion mirrors, and NVIDIA forum mirrors. | [Guide](examples/personal-community-sentiment-triage/README.md) |
 | Hermes Brev Launchable | Provides a notebook path from a fresh Brev CPU instance to a working NemoClaw-managed Hermes sandbox, including installation, onboarding, API verification, and terminal access. | [Guide](examples/hermes-launchable/README.md) |
 | Harness Engineering Playground | A CLI dev tool (not an OpenShell blueprint) for automated, eval-driven harness profile improvement, with pluggable target-framework adapters and optimization techniques. | [Guide](examples/harness-engineering-playground/README.md) |
